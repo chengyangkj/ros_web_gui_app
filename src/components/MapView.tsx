@@ -84,6 +84,7 @@ export function MapView({ connection }: MapViewProps) {
   const [status, setStatus] = useState('初始化中...');
   const [layerConfigs, setLayerConfigs] = useState<LayerConfigMap>(DEFAULT_LAYER_CONFIGS);
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
+  const viewModeRef = useRef<'2d' | '3d'>('2d');
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -114,12 +115,6 @@ export function MapView({ connection }: MapViewProps) {
     controls.maxDistance = 1000;
     controls.target.set(0, 0, 0);
     
-    controls.enableRotate = false;
-    controls.maxPolarAngle = Math.PI / 2;
-    controls.minPolarAngle = Math.PI / 2;
-    camera.position.set(0, 0, 10);
-    camera.up.set(0, 0, 1);
-    camera.lookAt(0, 0, 0);
     controls.update();
     
     controlsRef.current = controls;
@@ -144,7 +139,7 @@ export function MapView({ connection }: MapViewProps) {
     let animationFrameId: number;
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
-      if (controls) {
+      if (controls && camera) {
         controls.update();
       }
       if (renderer && scene && camera) {
@@ -254,6 +249,8 @@ export function MapView({ connection }: MapViewProps) {
   }, [layerConfigs]);
 
   useEffect(() => {
+    viewModeRef.current = viewMode;
+    
     if (!controlsRef.current || !cameraRef.current) {
       return;
     }
@@ -263,24 +260,28 @@ export function MapView({ connection }: MapViewProps) {
 
     if (viewMode === '2d') {
       controls.enableRotate = false;
-      controls.maxPolarAngle = Math.PI / 2;
-      controls.minPolarAngle = Math.PI / 2;
+      controls.enableZoom = true;
+      controls.enablePan = true;
+      controls.screenSpacePanning = false;
+      controls.enableDamping = true;
       
+      const targetZ = 0;
+      const distance = Math.max(Math.abs(camera.position.z - targetZ), 0.1);
       camera.up.set(0, 0, 1);
-      
-    //   const distance = Math.max(camera.position.distanceTo(controls.target), 0.1);
-    //   camera.position.set(controls.target.x, controls.target.y, controls.target.z + distance);
-      
-    //   const forward = new THREE.Vector3(0, 0, -1);
-    //   const up = new THREE.Vector3(0, 0, 1);
-    //   camera.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), forward);
-    //   camera.up.copy(up);
+      camera.position.set(controls.target.x, controls.target.y, targetZ + distance);
+      controls.target.set(controls.target.x, controls.target.y, targetZ);
+      camera.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0, 'XYZ'));
       
       controls.update();
+      
+
     } else {
       controls.enableRotate = true;
+      controls.enableZoom = true;
+      controls.enablePan = true;
       controls.maxPolarAngle = Math.PI;
       controls.minPolarAngle = 0;
+      controls.enableDamping = true;
       camera.up.set(0, 0, 1);
       controls.update();
     }
@@ -291,6 +292,7 @@ export function MapView({ connection }: MapViewProps) {
     e.stopPropagation();
     setViewMode((prev) => {
       const newMode = prev === '2d' ? '3d' : '2d';
+      viewModeRef.current = newMode;
       console.log(`切换视图模式: ${prev} -> ${newMode}`);
       return newMode;
     });
