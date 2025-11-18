@@ -1,0 +1,78 @@
+.ConnectionPage {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.ConnectionForm {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  min-width: 400px;
+}
+
+.ConnectionForm h1 {
+  margin: 0 0 2rem 0;
+  text-align: center;
+  color: #333;
+}
+
+.FormGroup {
+  margin-bottom: 1.5rem;
+}
+
+.FormGroup label {
+  display: block;
+  margin-bottom: 0.5rem;
+  color: #555;
+  font-weight: 500;
+}
+
+.FormGroup input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+.FormGroup input:disabled {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.Error {
+  color: #e74c3c;
+  margin-bottom: 1rem;
+  padding: 0.5rem;
+  background-color: #fee;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.ConnectionForm button {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: #667eea;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.ConnectionForm button:hover:not(:disabled) {
+  background-color: #5568d3;
+}
+
+.ConnectionForm button:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+

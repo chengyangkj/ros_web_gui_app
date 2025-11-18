@@ -1,0 +1,115 @@
+// SPDX-FileCopyrightText: Copyright (C) 2023-2025 Bayerische Motoren Werke Aktiengesellschaft (BMW AG)<lichtblick@bmwgroup.com>
+// SPDX-License-Identifier: MPL-2.0
+
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at http://mozilla.org/MPL/2.0/
+
+import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
+import CheckIcon from "@mui/icons-material/Check";
+import { ListItemIcon, ListItemText, Menu, MenuItem } from "@mui/material";
+import { useCallback, useEffect, useState } from "react";
+
+import HoverableIconButton from "@lichtblick/suite-base/components/HoverableIconButton";
+import { useMessagePipeline } from "@lichtblick/suite-base/components/MessagePipeline";
+import {
+  LayoutState,
+  useCurrentLayoutActions,
+  useCurrentLayoutSelector,
+} from "@lichtblick/suite-base/context/CurrentLayoutContext";
+
+const SPEED_OPTIONS = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 0.8, 1, 2, 3, 5];
+
+const formatSpeed = (val: number) => `${val < 0.1 ? val.toFixed(2) : val}×`;
+
+const configSpeedSelector = (state: LayoutState) =>
+  state.selectedLayout?.data?.playbackConfig.speed;
+
+export default function PlaybackSpeedControls(): React.JSX.Element {
+  const [anchorEl, setAnchorEl] = useState<undefined | HTMLElement>(undefined);
+  const open = Boolean(anchorEl);
+  const configSpeed = useCurrentLayoutSelector(configSpeedSelector);
+  const speed = useMessagePipeline(
+    useCallback(({ playerState }) => playerState.activeData?.speed, []),
+  );
+  const setPlaybackSpeed = useMessagePipeline(useCallback((state) => state.setPlaybackSpeed, []));
+  const { setPlaybackConfig } = useCurrentLayoutActions();
+  const setSpeed = useCallback(
+    (newSpeed: number) => {
+      setPlaybackConfig({ speed: newSpeed });
+      setPlaybackSpeed?.(newSpeed);
+    },
+    [setPlaybackConfig, setPlaybackSpeed],
+  );
+
+  const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleClose = () => {
+    setAnchorEl(undefined);
+  };
+
+  // Set the speed to the speed that we got from the config whenever we get a new Player.
+  useEffect(() => {
+    if (configSpeed != undefined) {
+      setPlaybackSpeed?.(configSpeed);
+    }
+  }, [configSpeed, setPlaybackSpeed]);
+
+  const displayedSpeed = speed ?? configSpeed;
+
+  return (
+    <>
+      <HoverableIconButton
+        disabled={setPlaybackSpeed == undefined}
+        size="small"
+        title="Playback speed"
+        icon={<ArrowDropDownIcon />}
+        activeIcon={<ArrowDropDownIcon />}
+        onClick={handleClick}
+        data-testid="PlaybackSpeedControls-Dropdown"
+      />
+      <Menu
+        id="playback-speed-menu"
+        anchorEl={anchorEl}
+        open={open}
+        onClose={handleClose}
+        MenuListProps={{
+          "aria-labelledby": "playback-speed-button",
+          dense: true,
+        }}
+        anchorOrigin={{
+          vertical: "top",
+          horizontal: "left",
+        }}
+        transformOrigin={{
+          vertical: "bottom",
+          horizontal: "left",
+        }}
+      >
+        {SPEED_OPTIONS.map((option) => (
+          <MenuItem
+            selected={displayedSpeed === option}
+            key={option}
+            onClick={() => {
+              setSpeed(option);
+              handleClose();
+            }}
+          >
+            {displayedSpeed === option && (
+              <ListItemIcon>
+                <CheckIcon fontSize="small" />
+              </ListItemIcon>
+            )}
+            <ListItemText
+              inset={displayedSpeed !== option}
+              primary={formatSpeed(option)}
+              primaryTypographyProps={{ variant: "inherit" }}
+            />
+          </MenuItem>
+        ))}
+      </Menu>
+    </>
+  );
+}
