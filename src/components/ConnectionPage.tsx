@@ -6,7 +6,10 @@ interface ConnectionPageProps {
 }
 
 export function ConnectionPage({ onConnect }: ConnectionPageProps) {
-  const [ip, setIp] = useState('localhost');
+  const [ip, setIp] = useState(() => {
+    const hostname = window.location.hostname;
+    return hostname || 'localhost';
+  });
   const [port, setPort] = useState('9090');
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
