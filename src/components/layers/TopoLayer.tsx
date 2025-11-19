@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { BaseLayer } from './BaseLayer';
 import type { LayerConfig } from '../../types/LayerConfig';
 import type { RosbridgeConnection } from '../../utils/RosbridgeConnection';
+import { TopologyMapManager } from '../../utils/TopologyMapManager';
+import type { TopologyMap } from '../../utils/TopologyMapManager';
 
 interface TopoPoint {
   name: string;
@@ -23,15 +25,6 @@ interface Route {
   route_info: RouteInfo;
 }
 
-interface TopologyMap {
-  map_name: string;
-  map_property?: {
-    support_controllers?: string[];
-    support_goal_checkers?: string[];
-  };
-  points: TopoPoint[];
-  routes?: Route[];
-}
 
 export class TopoLayer extends BaseLayer {
   private pointGroups: Map<string, THREE.Group> = new Map();
@@ -46,6 +39,7 @@ export class TopoLayer extends BaseLayer {
   private lastPoints: TopoPoint[] = [];
   private lastRoutes: Route[] = [];
   private selectedRoute: Route | null = null;
+  private selectedPoint: TopoPoint | null = null;
 
   constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
@@ -53,6 +47,23 @@ export class TopoLayer extends BaseLayer {
     this.routeColor = (config as any).routeColor || 0x6b7280;
     this.pointSize = (config as any).pointSize || 0.3;
     this.count = (config as any).count || 2;
+    
+    // 从 MapManager 加载初始地图数据
+    const mapManager = TopologyMapManager.getInstance();
+    if (connection) {
+      mapManager.initialize(connection);
+    }
+    const initialMap = mapManager.getMap();
+    if (initialMap.points && Array.isArray(initialMap.points) && initialMap.points.length > 0) {
+      this.update(initialMap);
+    }
+    
+    // 监听 MapManager 的更新
+    const handleMapUpdate = (map: TopologyMap) => {
+      this.update(map);
+    };
+    mapManager.addListener(handleMapUpdate);
+    
     if (config.topic) {
       this.subscribe(config.topic, this.getMessageType());
     }
@@ -139,6 +150,10 @@ export class TopoLayer extends BaseLayer {
     const cubeHeight = this.pointSize * 2;
     
     for (const [, group] of this.pointGroups.entries()) {
+      const point = group.userData.topoPoint as TopoPoint | undefined;
+      const isSelected = point && this.selectedPoint && point.name === this.selectedPoint.name;
+      const pointColor = isSelected ? 0xff0000 : this.color;
+      
       const ripples = group.children.filter(child => child.name?.startsWith('ripple_'));
       for (const ripple of ripples) {
         const index = parseInt(ripple.name?.split('_')[1] || '0');
@@ -147,6 +162,7 @@ export class TopoLayer extends BaseLayer {
         
         if (ripple instanceof THREE.Mesh) {
           const material = ripple.material as THREE.MeshBasicMaterial;
+          material.color.setHex(pointColor);
           material.opacity = opacity * 0.8;
           ripple.scale.set(scale, scale, scale);
           ripple.position.z = cubeHeight * scale / 2;
@@ -158,9 +174,20 @@ export class TopoLayer extends BaseLayer {
         const centerPulse = 1.0 + 0.1 * Math.sin(this.animationValue * 4 * Math.PI);
         const centerOpacity = 0.8 + 0.2 * Math.sin(this.animationValue * 2 * Math.PI);
         const material = center.material as THREE.MeshBasicMaterial;
+        material.color.setHex(pointColor);
         material.opacity = centerOpacity;
         center.scale.set(centerPulse, centerPulse, centerPulse);
         center.position.z = (cubeHeight / 3) * centerPulse / 2;
+      }
+      
+      const directionIndicator = group.children.find(child => child instanceof THREE.Group && child.children.some(c => c instanceof THREE.Mesh));
+      if (directionIndicator instanceof THREE.Group) {
+        directionIndicator.traverse((child) => {
+          if (child instanceof THREE.Mesh) {
+            const material = child.material as THREE.MeshBasicMaterial;
+            material.color.setHex(pointColor);
+          }
+        });
       }
     }
   }
@@ -227,7 +254,11 @@ export class TopoLayer extends BaseLayer {
     if (!msg.points || !Array.isArray(msg.points)) {
       return;
     }
-    console.log('msg', msg);
+    
+    // 更新 MapManager（如果是从 topic 接收的消息，不触发监听器避免循环）
+    const mapManager = TopologyMapManager.getInstance();
+    mapManager.updateMap(msg, false);
+    
     this.lastPoints = msg.points;
     this.lastRoutes = msg.routes || [];
     const currentPointNames = new Set(this.pointGroups.keys());
@@ -538,6 +569,31 @@ export class TopoLayer extends BaseLayer {
         mesh.material.color.setHex(isSelected ? 0xff0000 : this.routeColor);
         mesh.material.opacity = isSelected ? 0.8 : 0.6;
       }
+    }
+  }
+
+  setSelectedPoint(point: TopoPoint | null): void {
+    const newPointName = point?.name || null;
+    const currentPointName = this.selectedPoint?.name || null;
+    
+    if (newPointName === currentPointName) {
+      return;
+    }
+    
+    this.selectedPoint = point;
+    
+    // 立即更新所有点位的颜色（不等待动画循环）
+    for (const [, group] of this.pointGroups.entries()) {
+      const groupPoint = group.userData.topoPoint as TopoPoint | undefined;
+      const isSelected = point && groupPoint && groupPoint.name === point.name;
+      const pointColor = isSelected ? 0xff0000 : this.color;
+      
+      group.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          const material = child.material as THREE.MeshBasicMaterial;
+          material.color.setHex(pointColor);
+        }
+      });
     }
   }
 

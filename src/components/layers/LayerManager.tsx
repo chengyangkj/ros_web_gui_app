@@ -102,7 +102,7 @@ export class LayerManager {
       case 'tf':
         layer = new TFLayer(this.scene, config, this.connection);
         break;
-      case 'topo':
+      case 'topology':
         layer = new TopoLayer(this.scene, config, this.connection);
         break;
       default:

@@ -7,6 +7,7 @@ import { TF2JS } from '../utils/tf2js';
 import { LayerManager } from './layers/LayerManager';
 import type { LayerConfigMap } from '../types/LayerConfig';
 import { LayerSettingsPanel } from './LayerSettingsPanel';
+import { MapEditor } from './MapEditor';
 import { loadLayerConfigs, saveLayerConfigs } from '../utils/layerConfigStorage';
 import './MapView.css';
 
@@ -99,11 +100,11 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     enabled: true,
     showFrameNames: true,
   },
-  topo: {
-    id: 'topo',
-    name: 'Topo地图',
+  topology: {
+    id: 'topology',
+    name: 'Topology地图',
     topic: '/map/topology',
-    messageType: null,
+    messageType: 'topology_msgs/TopologyMap',
     enabled: true,
     color: 0x2196f3,
     pointSize: 0.1,
@@ -132,6 +133,7 @@ export function MapView({ connection }: MapViewProps) {
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
   const viewModeRef = useRef<'2d' | '3d'>('2d');
   const [showSettings, setShowSettings] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
   const [focusRobot, setFocusRobot] = useState(false);
   const focusRobotRef = useRef(false);
   const followDistanceRef = useRef<number | null>(null);
@@ -218,9 +220,12 @@ export function MapView({ connection }: MapViewProps) {
             setSelectedTopoPoint(null);
             
             // 更新 TopoLayer 的选中状态
-            const topoLayer = layerManagerRef.current?.getLayer('topo');
+            const topoLayer = layerManagerRef.current?.getLayer('topology');
             if (topoLayer && 'setSelectedRoute' in topoLayer) {
               (topoLayer as any).setSelectedRoute(route);
+            }
+            if (topoLayer && 'setSelectedPoint' in topoLayer) {
+              (topoLayer as any).setSelectedPoint(null);
             }
             return;
           }
@@ -234,8 +239,11 @@ export function MapView({ connection }: MapViewProps) {
             });
             setSelectedTopoRoute(null);
             
-            // 清除 TopoLayer 的选中状态
-            const topoLayer = layerManagerRef.current?.getLayer('topo');
+            // 更新 TopoLayer 的选中状态
+            const topoLayer = layerManagerRef.current?.getLayer('topology');
+            if (topoLayer && 'setSelectedPoint' in topoLayer) {
+              (topoLayer as any).setSelectedPoint(point);
+            }
             if (topoLayer && 'setSelectedRoute' in topoLayer) {
               (topoLayer as any).setSelectedRoute(null);
             }
@@ -249,9 +257,12 @@ export function MapView({ connection }: MapViewProps) {
       setSelectedTopoRoute(null);
       
       // 清除 TopoLayer 的选中状态
-      const topoLayer = layerManagerRef.current?.getLayer('topo');
+      const topoLayer = layerManagerRef.current?.getLayer('topology');
       if (topoLayer && 'setSelectedRoute' in topoLayer) {
         (topoLayer as any).setSelectedRoute(null);
+      }
+      if (topoLayer && 'setSelectedPoint' in topoLayer) {
+        (topoLayer as any).setSelectedPoint(null);
       }
     };
 
@@ -526,6 +537,14 @@ export function MapView({ connection }: MapViewProps) {
         >
           ⚙
         </button>
+        <button
+          className="SettingsButton"
+          onClick={() => setShowEditor(true)}
+          title="地图编辑"
+          type="button"
+        >
+          ✏️
+        </button>
       </div>
       <div className="BottomControls">
         <button
@@ -548,6 +567,12 @@ export function MapView({ connection }: MapViewProps) {
           onClose={() => setShowSettings(false)}
         />
       )}
+      {showEditor && (
+        <MapEditor
+          connection={connection}
+          onClose={() => setShowEditor(false)}
+        />
+      )}
       {selectedTopoPoint && (
         <div className="TopoPointInfoPanel">
           <div className="TopoPointInfoHeader">
@@ -556,7 +581,10 @@ export function MapView({ connection }: MapViewProps) {
               className="CloseButton"
               onClick={() => {
                 setSelectedTopoPoint(null);
-                const topoLayer = layerManagerRef.current?.getLayer('topo');
+                const topoLayer = layerManagerRef.current?.getLayer('topology');
+                if (topoLayer && 'setSelectedPoint' in topoLayer) {
+                  (topoLayer as any).setSelectedPoint(null);
+                }
                 if (topoLayer && 'setSelectedRoute' in topoLayer) {
                   (topoLayer as any).setSelectedRoute(null);
                 }
@@ -601,9 +629,12 @@ export function MapView({ connection }: MapViewProps) {
               className="CloseButton"
               onClick={() => {
                 setSelectedTopoRoute(null);
-                const topoLayer = layerManagerRef.current?.getLayer('topo');
+                const topoLayer = layerManagerRef.current?.getLayer('topology');
                 if (topoLayer && 'setSelectedRoute' in topoLayer) {
                   (topoLayer as any).setSelectedRoute(null);
+                }
+                if (topoLayer && 'setSelectedPoint' in topoLayer) {
+                  (topoLayer as any).setSelectedPoint(null);
                 }
               }}
               type="button"
