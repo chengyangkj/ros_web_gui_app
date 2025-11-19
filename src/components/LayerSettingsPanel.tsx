@@ -237,6 +237,21 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                       )}
                     </div>
                   )}
+                  {(config as any).followZoomFactor !== undefined && (
+                    <div className="DetailRow">
+                      <span className="DetailLabel">跟随缩放倍数:</span>
+                      <input
+                        className="DetailInput NumberInput"
+                        type="number"
+                        min="0.01"
+                        max="1"
+                        step="0.01"
+                        value={(config as any).followZoomFactor ?? 0.3}
+                        onChange={(e) => handleFieldChange(layerId, 'followZoomFactor', parseFloat(e.target.value) || 0.3)}
+                      />
+                      <span className="DetailHint">（越小越放大，范围：0.01-1）</span>
+                    </div>
+                  )}
                   {(config as any).color !== undefined && (
                     <div className="DetailRow">
                       <span className="DetailLabel">颜色:</span>

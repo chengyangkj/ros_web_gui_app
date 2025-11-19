@@ -68,6 +68,7 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     enabled: true,
     baseFrame: 'base_center',
     mapFrame: 'map',
+    followZoomFactor: 0.3, // 跟随机器人时的缩放倍数（越小越放大）
   },
   local_plan: {
     id: 'local_plan',
@@ -137,6 +138,7 @@ export function MapView({ connection }: MapViewProps) {
   const [focusRobot, setFocusRobot] = useState(false);
   const focusRobotRef = useRef(false);
   const followDistanceRef = useRef<number | null>(null);
+  const initialFollowDistanceRef = useRef<number | null>(null);
   const [selectedTopoPoint, setSelectedTopoPoint] = useState<{
     name: string;
     x: number;
@@ -304,8 +306,15 @@ export function MapView({ connection }: MapViewProps) {
               
               if (followDistanceRef.current === null) {
                 const currentDistance = camera.position.distanceTo(controls.target);
-                followDistanceRef.current = Math.max(currentDistance, controls.minDistance);
+                initialFollowDistanceRef.current = currentDistance;
+                const zoomFactor = (robotConfig as any).followZoomFactor ?? 0.3;
+                followDistanceRef.current = Math.max(currentDistance * zoomFactor, controls.minDistance);
               }
+              
+              // 获取机器人方向（绕 Z 轴的旋转角度）
+              const robotEuler = new THREE.Euler();
+              robotEuler.setFromQuaternion(transform.rotation, 'XYZ');
+              const robotTheta = robotEuler.z; // 机器人在 XY 平面的旋转角度（绕 Z 轴）
               
               if (viewModeRef.current === '2d') {
                 camera.position.set(
@@ -314,29 +323,36 @@ export function MapView({ connection }: MapViewProps) {
                   controls.target.z + followDistanceRef.current
                 );
                 camera.up.set(0, 0, 1);
-                camera.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0, 'XYZ'));
+                // 根据机器人方向旋转相机，使机器人车头方向在屏幕正前方
+                // 屏幕正前方是 -Y 方向，所以需要旋转 -robotTheta
+                camera.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, -robotTheta, 'XYZ'));
               } else {
-                const offset = new THREE.Vector3();
-                offset.subVectors(camera.position, controls.target);
-                const currentDistance = offset.length();
+                // 3D 模式下，调整相机位置使机器人车头方向在屏幕正前方
                 const targetDistance = followDistanceRef.current;
                 
-                if (currentDistance > 0.01) {
-                  offset.normalize();
-                  offset.multiplyScalar(targetDistance);
-                  camera.position.copy(controls.target).add(offset);
-                } else {
-                  camera.position.set(
-                    controls.target.x,
-                    controls.target.y,
-                    controls.target.z + targetDistance
-                  );
-                }
+                // 计算相机应该的位置（在机器人后方，高度适中）
+                // 机器人车头方向是 (cos(robotTheta), sin(robotTheta), 0)
+                // 相机应该在机器人后方，所以是 (-cos(robotTheta), -sin(robotTheta), height)
+                const cameraHeight = targetDistance * 0.3; // 相机高度
+                const cameraBackDistance = Math.sqrt(targetDistance * targetDistance - cameraHeight * cameraHeight);
+                const cameraX = -Math.cos(robotTheta) * cameraBackDistance;
+                const cameraY = -Math.sin(robotTheta) * cameraBackDistance;
+                const cameraZ = cameraHeight;
+                
+                camera.position.set(
+                  controls.target.x + cameraX,
+                  controls.target.y + cameraY,
+                  controls.target.z + cameraZ
+                );
+                
+                // 相机看向机器人
+                camera.lookAt(controls.target);
               }
             }
           }
         } else {
           followDistanceRef.current = null;
+          initialFollowDistanceRef.current = null;
         }
         controls.update();
       }
@@ -475,9 +491,20 @@ export function MapView({ connection }: MapViewProps) {
         const controls = controlsRef.current;
         const camera = cameraRef.current;
         const currentDistance = camera.position.distanceTo(controls.target);
-        followDistanceRef.current = Math.max(currentDistance, controls.minDistance);
+        initialFollowDistanceRef.current = currentDistance;
+        // 应用缩放倍数
+        const robotConfig = layerConfigsRef.current.robot;
+        const zoomFactor = (robotConfig as any)?.followZoomFactor ?? 0.3;
+        followDistanceRef.current = Math.max(currentDistance * zoomFactor, controls.minDistance);
       } else if (!prev) {
         followDistanceRef.current = 10;
+        initialFollowDistanceRef.current = null;
+      } else {
+        // 取消跟随时，恢复原始距离
+        if (initialFollowDistanceRef.current !== null) {
+          followDistanceRef.current = initialFollowDistanceRef.current;
+          initialFollowDistanceRef.current = null;
+        }
       }
       return !prev;
     });
