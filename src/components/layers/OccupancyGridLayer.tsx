@@ -53,6 +53,9 @@ export class OccupancyGridLayer extends BaseLayer {
   private mesh: THREE.Mesh | null = null;
   private texture: THREE.DataTexture | null = null;
   private settings: OccupancyGridSettings;
+  private lastData: number[] | Int8Array | null = null;
+  private lastWidth: number = 0;
+  private lastHeight: number = 0;
 
   constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
@@ -109,6 +112,9 @@ export class OccupancyGridLayer extends BaseLayer {
     }
 
     this.updateTexture(this.texture!, msg.data, width, height);
+    this.lastData = msg.data;
+    this.lastWidth = width;
+    this.lastHeight = height;
     
     const mapWidth = width * resolution;
     const mapHeight = height * resolution;
@@ -152,13 +158,14 @@ export class OccupancyGridLayer extends BaseLayer {
   }
 
   private createMaterial(texture: THREE.DataTexture): THREE.MeshBasicMaterial {
-    const transparent = this.settings.colorMode !== 'custom' || this.settings.alpha! < 1.0;
+    const transparent = this.settings.alpha! < 1.0;
     return new THREE.MeshBasicMaterial({
       map: texture,
       side: THREE.DoubleSide,
       alphaTest: 1e-4,
       depthWrite: !transparent,
       transparent,
+      opacity: this.settings.alpha,
     });
   }
 
@@ -189,22 +196,16 @@ export class OccupancyGridLayer extends BaseLayer {
       const offset = i * 4;
 
       if (this.settings.colorMode === 'custom') {
-        if (value === -1) {
-          rgba[offset + 0] = tempUnknownColor.r;
-          rgba[offset + 1] = tempUnknownColor.g;
-          rgba[offset + 2] = tempUnknownColor.b;
-          rgba[offset + 3] = tempUnknownColor.a;
-        } else if (value >= 0 && value <= 100) {
-          const frac = value / 100;
-          rgba[offset + 0] = tempMinColor.r + (tempMaxColor.r - tempMinColor.r) * frac;
-          rgba[offset + 1] = tempMinColor.g + (tempMaxColor.g - tempMinColor.g) * frac;
-          rgba[offset + 2] = tempMinColor.b + (tempMaxColor.b - tempMinColor.b) * frac;
-          rgba[offset + 3] = tempMinColor.a + (tempMaxColor.a - tempMinColor.a) * frac;
+        if (value === 100) {
+          rgba[offset + 0] = tempMaxColor.r;
+          rgba[offset + 1] = tempMaxColor.g;
+          rgba[offset + 2] = tempMaxColor.b;
+          rgba[offset + 3] = Math.trunc(tempMaxColor.a * this.settings.alpha!);
         } else {
-          rgba[offset + 0] = tempInvalidColor.r;
-          rgba[offset + 1] = tempInvalidColor.g;
-          rgba[offset + 2] = tempInvalidColor.b;
-          rgba[offset + 3] = tempInvalidColor.a;
+          rgba[offset + 0] = 0;
+          rgba[offset + 1] = 0;
+          rgba[offset + 2] = 0;
+          rgba[offset + 3] = 0;
         }
       } else {
         paletteColorCached(tempColor, value, this.settings.colorMode!);
@@ -221,6 +222,8 @@ export class OccupancyGridLayer extends BaseLayer {
   setConfig(config: LayerConfig): void {
     super.setConfig(config);
     const oldHeight = this.settings.height;
+    const oldAlpha = this.settings.alpha;
+    const oldColorMode = this.settings.colorMode;
     this.settings = {
       colorMode: (config as any).colorMode || 'map',
       minColor: (config as any).minColor || rgbaToCssString(DEFAULT_MIN_COLOR),
@@ -233,6 +236,17 @@ export class OccupancyGridLayer extends BaseLayer {
     
     if (this.mesh && oldHeight !== this.settings.height) {
       this.mesh.position.z = this.mesh.position.z - (oldHeight ?? 0) + (this.settings.height ?? 0);
+    }
+    
+    if (this.mesh && (oldAlpha !== this.settings.alpha || oldColorMode !== this.settings.colorMode)) {
+      const material = this.mesh.material as THREE.MeshBasicMaterial;
+      const transparent = this.settings.alpha! < 1.0;
+      material.transparent = transparent;
+      material.opacity = this.settings.alpha ?? 1.0;
+      material.depthWrite = !transparent;
+      if (this.texture && this.lastData) {
+        this.updateTexture(this.texture, this.lastData, this.lastWidth, this.lastHeight);
+      }
     }
   }
 

@@ -39,7 +39,7 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     enabled: true,
     colorMode: 'costmap',
     alpha: 0.7,
-    height: 0.00001,
+    height: 0.001,
   },
   global_costmap: {
     id: 'global_costmap',
@@ -119,9 +119,13 @@ export function MapView({ connection }: MapViewProps) {
     }
     return DEFAULT_LAYER_CONFIGS;
   });
+  const layerConfigsRef = useRef<LayerConfigMap>(layerConfigs);
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
   const viewModeRef = useRef<'2d' | '3d'>('2d');
   const [showSettings, setShowSettings] = useState(false);
+  const [focusRobot, setFocusRobot] = useState(false);
+  const focusRobotRef = useRef(false);
+  const followDistanceRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -180,6 +184,57 @@ export function MapView({ connection }: MapViewProps) {
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
       if (controls && camera) {
+        if (focusRobotRef.current) {
+          const robotConfig = layerConfigsRef.current.robot;
+          if (robotConfig) {
+            const baseFrame = (robotConfig as any).baseFrame || 'base_center';
+            const mapFrame = (robotConfig as any).mapFrame || 'map';
+            const tf2js = TF2JS.getInstance();
+            const transform = tf2js.findTransform(mapFrame, baseFrame);
+            if (transform) {
+              const targetZ = viewModeRef.current === '2d' ? 0 : transform.translation.z;
+              controls.target.set(
+                transform.translation.x,
+                transform.translation.y,
+                targetZ
+              );
+              
+              if (followDistanceRef.current === null) {
+                const currentDistance = camera.position.distanceTo(controls.target);
+                followDistanceRef.current = Math.max(currentDistance, controls.minDistance);
+              }
+              
+              if (viewModeRef.current === '2d') {
+                camera.position.set(
+                  controls.target.x,
+                  controls.target.y,
+                  controls.target.z + followDistanceRef.current
+                );
+                camera.up.set(0, 0, 1);
+                camera.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0, 'XYZ'));
+              } else {
+                const offset = new THREE.Vector3();
+                offset.subVectors(camera.position, controls.target);
+                const currentDistance = offset.length();
+                const targetDistance = followDistanceRef.current;
+                
+                if (currentDistance > 0.01) {
+                  offset.normalize();
+                  offset.multiplyScalar(targetDistance);
+                  camera.position.copy(controls.target).add(offset);
+                } else {
+                  camera.position.set(
+                    controls.target.x,
+                    controls.target.y,
+                    controls.target.z + targetDistance
+                  );
+                }
+              }
+            }
+          }
+        } else {
+          followDistanceRef.current = null;
+        }
         controls.update();
       }
       if (renderer && scene && camera) {
@@ -226,6 +281,10 @@ export function MapView({ connection }: MapViewProps) {
   }, [connection]);
 
   useEffect(() => {
+    layerConfigsRef.current = layerConfigs;
+  }, [layerConfigs]);
+
+  useEffect(() => {
     if (layerManagerRef.current && connection.isConnected()) {
       layerManagerRef.current.setLayerConfigs(layerConfigs);
     }
@@ -241,6 +300,10 @@ export function MapView({ connection }: MapViewProps) {
       return updated;
     });
   };
+
+  useEffect(() => {
+    focusRobotRef.current = focusRobot;
+  }, [focusRobot]);
 
   useEffect(() => {
     viewModeRef.current = viewMode;
@@ -300,6 +363,22 @@ export function MapView({ connection }: MapViewProps) {
     });
   };
 
+  const handleFocusRobotToggle = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setFocusRobot((prev) => {
+      if (!prev && controlsRef.current && cameraRef.current) {
+        const controls = controlsRef.current;
+        const camera = cameraRef.current;
+        const currentDistance = camera.position.distanceTo(controls.target);
+        followDistanceRef.current = Math.max(currentDistance, controls.minDistance);
+      } else if (!prev) {
+        followDistanceRef.current = 10;
+      }
+      return !prev;
+    });
+  };
+
   return (
     <div className="MapView">
       <div className="ViewControls">
@@ -318,6 +397,16 @@ export function MapView({ connection }: MapViewProps) {
           type="button"
         >
           ⚙
+        </button>
+      </div>
+      <div className="BottomControls">
+        <button
+          className={`FocusRobotButton ${focusRobot ? 'active' : ''}`}
+          onClick={handleFocusRobotToggle}
+          title={focusRobot ? '取消跟随机器人' : '跟随机器人'}
+          type="button"
+        >
+          {focusRobot ? '📍 跟随中' : '📍 跟随机器人'}
         </button>
       </div>
       {showSettings && (
