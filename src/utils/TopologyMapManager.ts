@@ -115,7 +115,19 @@ export class TopologyMapManager {
     return this.points.get(name);
   }
 
-  public setPoint(point: TopoPoint): void {
+  public setPoint(point: TopoPoint, oldName?: string): void {
+    if (oldName && oldName !== point.name) {
+      this.points.delete(oldName);
+      this.routes = this.routes.map(route => {
+        if (route.from_point === oldName) {
+          return { ...route, from_point: point.name };
+        }
+        if (route.to_point === oldName) {
+          return { ...route, to_point: point.name };
+        }
+        return route;
+      });
+    }
     this.points.set(point.name, point);
     this.notifyListeners();
   }

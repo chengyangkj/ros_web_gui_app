@@ -117,12 +117,14 @@ export class ModifyPointCommand implements Command {
   ) {}
 
   execute(): void {
-    this.mapManager.setPoint(this.newPoint);
+    const oldName = this.oldPoint.name !== this.newPoint.name ? this.oldPoint.name : undefined;
+    this.mapManager.setPoint(this.newPoint, oldName);
     this.onUpdate();
   }
 
   undo(): void {
-    this.mapManager.setPoint(this.oldPoint);
+    const oldName = this.newPoint.name !== this.oldPoint.name ? this.newPoint.name : undefined;
+    this.mapManager.setPoint(this.oldPoint, oldName);
     this.onUpdate();
   }
 
