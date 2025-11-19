@@ -4,7 +4,6 @@ export interface LayerConfig {
   topic: string | null;
   messageType: string | null;
   enabled: boolean;
-  visible: boolean;
   [key: string]: unknown;
 }
 

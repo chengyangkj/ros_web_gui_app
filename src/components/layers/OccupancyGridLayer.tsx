@@ -41,6 +41,7 @@ interface OccupancyGridSettings {
   unknownColor?: string;
   invalidColor?: string;
   alpha?: number;
+  height?: number;
 }
 
 const DEFAULT_MIN_COLOR = { r: 1, g: 1, b: 1, a: 1 };
@@ -62,6 +63,7 @@ export class OccupancyGridLayer extends BaseLayer {
       unknownColor: (config as any).unknownColor || rgbaToCssString(DEFAULT_UNKNOWN_COLOR),
       invalidColor: (config as any).invalidColor || rgbaToCssString(DEFAULT_INVALID_COLOR),
       alpha: (config as any).alpha ?? 1.0,
+      height: (config as any).height ?? 0,
     };
     if (config.topic) {
       this.subscribe(config.topic, this.getMessageType());
@@ -122,7 +124,7 @@ export class OccupancyGridLayer extends BaseLayer {
     this.mesh.position.set(
       origin.position.x,
       origin.position.y,
-      origin.position.z
+      origin.position.z + (this.settings.height ?? 0)
     );
     
     this.mesh.quaternion.copy(originQuaternion);
@@ -214,6 +216,24 @@ export class OccupancyGridLayer extends BaseLayer {
     }
 
     texture.needsUpdate = true;
+  }
+
+  setConfig(config: LayerConfig): void {
+    super.setConfig(config);
+    const oldHeight = this.settings.height;
+    this.settings = {
+      colorMode: (config as any).colorMode || 'map',
+      minColor: (config as any).minColor || rgbaToCssString(DEFAULT_MIN_COLOR),
+      maxColor: (config as any).maxColor || rgbaToCssString(DEFAULT_MAX_COLOR),
+      unknownColor: (config as any).unknownColor || rgbaToCssString(DEFAULT_UNKNOWN_COLOR),
+      invalidColor: (config as any).invalidColor || rgbaToCssString(DEFAULT_INVALID_COLOR),
+      alpha: (config as any).alpha ?? 1.0,
+      height: (config as any).height ?? 0,
+    };
+    
+    if (this.mesh && oldHeight !== this.settings.height) {
+      this.mesh.position.z = this.mesh.position.z - (oldHeight ?? 0) + (this.settings.height ?? 0);
+    }
   }
 
   dispose(): void {

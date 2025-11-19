@@ -47,7 +47,7 @@ export abstract class BaseLayer implements LayerRenderable {
     console.log(`[${this.constructor.name}] Subscribing to topic: ${topic}, messageType: ${finalMessageType}`);
 
     const callback = (message: unknown) => {
-      if (this.config.enabled && this.config.visible) {
+      if (this.config.enabled) {
         this.update(message);
         const obj3D = this.getObject3D();
         if (obj3D && !this.scene.children.includes(obj3D)) {
@@ -92,7 +92,7 @@ export abstract class BaseLayer implements LayerRenderable {
 
   setConfig(config: LayerConfig): void {
     const oldTopic = this.config.topic;
-    console.log(`[${this.constructor.name}] setConfig:`, { oldTopic, newTopic: config.topic, enabled: config.enabled, visible: config.visible });
+    console.log(`[${this.constructor.name}] setConfig:`, { oldTopic, newTopic: config.topic, enabled: config.enabled });
     this.config = config;
     
     if (config.topic !== oldTopic && this.connection?.isConnected()) {
@@ -100,9 +100,9 @@ export abstract class BaseLayer implements LayerRenderable {
       this.subscribe(config.topic, this.getMessageType());
     }
     
-    if (!config.visible && this.object3D) {
+    if (!config.enabled && this.object3D) {
       this.scene.remove(this.object3D);
-    } else if (config.visible && config.enabled && this.object3D && !this.scene.children.includes(this.object3D)) {
+    } else if (config.enabled && this.object3D && !this.scene.children.includes(this.object3D)) {
       this.scene.add(this.object3D);
     }
   }
@@ -115,8 +115,7 @@ export abstract class BaseLayer implements LayerRenderable {
     console.log(`[${this.constructor.name}] setConnection:`, { 
       isConnected: connection.isConnected(), 
       topic: this.config.topic,
-      enabled: this.config.enabled,
-      visible: this.config.visible 
+      enabled: this.config.enabled
     });
     this.connection = connection;
     if (this.config.topic && connection.isConnected()) {

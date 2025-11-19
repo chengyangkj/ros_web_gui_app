@@ -65,7 +65,7 @@ export class PathLayer extends BaseLayer {
     const points: THREE.Vector3[] = [];
     for (const poseStamped of msg.poses) {
       const pos = poseStamped.pose.position;
-      points.push(new THREE.Vector3(pos.x, pos.y, pos.z));
+      points.push(new THREE.Vector3(pos.x, pos.y, pos.z+0.001));
     }
 
     const geometry = new THREE.BufferGeometry().setFromPoints(points);

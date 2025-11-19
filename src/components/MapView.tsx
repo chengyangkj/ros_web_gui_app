@@ -6,6 +6,8 @@ import { RosbridgeConnection } from '../utils/RosbridgeConnection';
 import { TF2JS } from '../utils/tf2js';
 import { LayerManager } from './layers/LayerManager';
 import type { LayerConfigMap } from '../types/LayerConfig';
+import { LayerSettingsPanel } from './LayerSettingsPanel';
+import { loadLayerConfigs, saveLayerConfigs } from '../utils/layerConfigStorage';
 import './MapView.css';
 
 interface MapViewProps {
@@ -19,7 +21,6 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     topic: '/map',
     messageType: null,
     enabled: true,
-    visible: true,
   },
   occupancy_grid: {
     id: 'occupancy_grid',
@@ -27,8 +28,8 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     topic: '/map',
     messageType: 'nav_msgs/OccupancyGrid',
     enabled: true,
-    visible: true,
     colorMode: 'map',
+    height: 0,
   },
   local_costmap: {
     id: 'local_costmap',
@@ -36,9 +37,9 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     topic: '/local_costmap/costmap',
     messageType: 'nav_msgs/OccupancyGrid',
     enabled: true,
-    visible: true,
     colorMode: 'costmap',
     alpha: 0.7,
+    height: 0.00001,
   },
   global_costmap: {
     id: 'global_costmap',
@@ -46,9 +47,9 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     topic: '/global_costmap/costmap',
     messageType: 'nav_msgs/OccupancyGrid',
     enabled: true,
-    visible: true,
     colorMode: 'costmap',
-    alpha: 0.7,
+    alpha: 0.3,
+    height: 0,
   },
   laser_scan: {
     id: 'laser_scan',
@@ -56,7 +57,6 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     topic: '/scan',
     messageType: 'sensor_msgs/LaserScan',
     enabled: true,
-    visible: true,
     targetFrame: 'map',
   },
   robot: {
@@ -65,7 +65,6 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     topic: null,
     messageType: null,
     enabled: true,
-    visible: true,
     baseFrame: 'base_center',
     mapFrame: 'map',
   },
@@ -75,7 +74,6 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     topic: '/local_plan',
     messageType: 'nav_msgs/Path',
     enabled: true,
-    visible: true,
     color: 0x00ff00,
   },
   plan: {
@@ -84,7 +82,6 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     topic: '/plan',
     messageType: 'nav_msgs/Path',
     enabled: true,
-    visible: true,
     color: 0x0000ff,
   },
   footprint: {
@@ -93,7 +90,6 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     topic: '/local_costmap/published_footprint',
     messageType: 'geometry_msgs/PolygonStamped',
     enabled: true,
-    visible: true,
   },
   tf: {
     id: 'tf',
@@ -101,7 +97,7 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     topic: null,
     messageType: null,
     enabled: true,
-    visible: true,
+    showFrameNames: true,
   },
 };
 
@@ -112,9 +108,20 @@ export function MapView({ connection }: MapViewProps) {
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const layerManagerRef = useRef<LayerManager | null>(null);
-  const [layerConfigs] = useState<LayerConfigMap>(DEFAULT_LAYER_CONFIGS);
+  const [layerConfigs, setLayerConfigs] = useState<LayerConfigMap>(() => {
+    const saved = loadLayerConfigs();
+    if (saved) {
+      const merged: LayerConfigMap = {};
+      for (const [key, defaultConfig] of Object.entries(DEFAULT_LAYER_CONFIGS)) {
+        merged[key] = { ...defaultConfig, ...saved[key] };
+      }
+      return merged;
+    }
+    return DEFAULT_LAYER_CONFIGS;
+  });
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
   const viewModeRef = useRef<'2d' | '3d'>('2d');
+  const [showSettings, setShowSettings] = useState(false);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -203,11 +210,6 @@ export function MapView({ connection }: MapViewProps) {
         
         TF2JS.getInstance().initialize(connection);
         layerManagerRef.current?.setLayerConfigs(layerConfigs);
-
-        const topicList = Object.values(layerConfigs)
-          .filter((c) => c.enabled && c.visible && c.topic)
-          .map((c) => c.topic)
-          .join(', ');
       } catch (error) {
         console.error('Failed to initialize message readers:', error);
         toast.error('初始化失败，使用默认配置...');
@@ -228,6 +230,17 @@ export function MapView({ connection }: MapViewProps) {
       layerManagerRef.current.setLayerConfigs(layerConfigs);
     }
   }, [layerConfigs, connection]);
+
+  const handleConfigChange = (layerId: string, config: Partial<import('../types/LayerConfig').LayerConfig>) => {
+    setLayerConfigs((prev) => {
+      const updated = { ...prev };
+      if (updated[layerId]) {
+        updated[layerId] = { ...updated[layerId]!, ...config };
+      }
+      saveLayerConfigs(updated);
+      return updated;
+    });
+  };
 
   useEffect(() => {
     viewModeRef.current = viewMode;
@@ -298,7 +311,22 @@ export function MapView({ connection }: MapViewProps) {
         >
           {viewMode === '2d' ? '2D' : '3D'}
         </button>
+        <button
+          className="SettingsButton"
+          onClick={() => setShowSettings(!showSettings)}
+          title="图层配置"
+          type="button"
+        >
+          ⚙
+        </button>
       </div>
+      {showSettings && (
+        <LayerSettingsPanel
+          layerConfigs={layerConfigs}
+          onConfigChange={handleConfigChange}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
       <canvas ref={canvasRef} className="MapCanvas" />
     </div>
   );

@@ -27,7 +27,13 @@ export class TFLayer extends BaseLayer {
   }
 
   private updateFrames(): void {
-    if (!this.config.enabled || !this.config.visible) {
+    if (!this.config.enabled) {
+      for (const frameId of this.frameGroups.keys()) {
+        const group = this.frameGroups.get(frameId);
+        if (group) {
+          group.visible = false;
+        }
+      }
       return;
     }
 
@@ -37,6 +43,11 @@ export class TFLayer extends BaseLayer {
     for (const frameId of frames) {
       if (!currentFrameIds.has(frameId)) {
         this.createFrame(frameId);
+      } else {
+        const group = this.frameGroups.get(frameId);
+        if (group) {
+          group.visible = true;
+        }
       }
       this.updateFrameTransform(frameId);
     }
@@ -55,9 +66,12 @@ export class TFLayer extends BaseLayer {
     const axesHelper = new THREE.AxesHelper(this.axesSize);
     group.add(axesHelper);
 
-    const label = this.createLabel(frameId);
-    label.position.set(0, 0, this.axesSize + 0.02);
-    group.add(label);
+    const showFrameNames = (this.config as any).showFrameNames !== false;
+    if (showFrameNames) {
+      const label = this.createLabel(frameId);
+      label.position.set(0, 0, this.axesSize + 0.02);
+      group.add(label);
+    }
 
     this.frameGroups.set(frameId, group);
     this.scene.add(group);
@@ -93,6 +107,7 @@ export class TFLayer extends BaseLayer {
     sprite.scale.set(0.2, 0.05, 1);
 
     const labelGroup = new THREE.Group();
+    labelGroup.name = `label_${text}`;
     labelGroup.add(sprite);
     return labelGroup;
   }
@@ -150,7 +165,38 @@ export class TFLayer extends BaseLayer {
   }
 
   setConfig(config: LayerConfig): void {
+    const oldEnabled = this.config.enabled;
+    const oldShowFrameNames = (this.config as any).showFrameNames;
     super.setConfig(config);
+    
+    if (oldEnabled !== config.enabled) {
+      for (const frameId of this.frameGroups.keys()) {
+        const group = this.frameGroups.get(frameId);
+        if (group) {
+          group.visible = config.enabled;
+        }
+      }
+    }
+    
+    if (oldShowFrameNames !== (config as any).showFrameNames) {
+      const showFrameNames = (config as any).showFrameNames !== false;
+      const frames = this.tf2js.getFrames();
+      for (const frameId of frames) {
+        const group = this.frameGroups.get(frameId);
+        if (group) {
+          const existingLabel = group.children.find(child => child.name === `label_${frameId}`);
+          if (showFrameNames && !existingLabel) {
+            const label = this.createLabel(frameId);
+            label.position.set(0, 0, this.axesSize + 0.02);
+            group.add(label);
+          } else if (!showFrameNames && existingLabel) {
+            group.remove(existingLabel);
+            this.disposeFrameGroup(existingLabel as THREE.Group);
+          }
+        }
+      }
+    }
+    
     this.updateFrames();
   }
 
