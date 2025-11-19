@@ -36,7 +36,7 @@ export function ConnectionPage({ onConnect }: ConnectionPageProps) {
   return (
     <div className="ConnectionPage">
       <div className="ConnectionForm">
-        <h1>ROS机器人连接</h1>
+        <h1>机器人连接</h1>
         <div className="FormGroup">
           <label htmlFor="ip">IP地址:</label>
           <input

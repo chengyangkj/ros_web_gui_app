@@ -32,30 +32,66 @@ export class RobotLayer extends BaseLayer {
     return null;
   }
 
-  private createSVGTexture(): THREE.Texture {
-    const loader = new THREE.TextureLoader();
-    const texture = loader.load(robotSvgUrl);
-    texture.flipY = false;
-    return texture;
+  private createSVGTexture(): Promise<THREE.Texture> {
+    return new Promise<THREE.Texture>((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const size = 1024;
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.clearRect(0, 0, size, size);
+          ctx.drawImage(img, 0, 0, size, size);
+        }
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.flipY = false;
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.generateMipmaps = false;
+        texture.anisotropy = 16;
+        resolve(texture);
+      };
+      img.onerror = () => {
+        const loader = new THREE.TextureLoader();
+        const texture = loader.load(robotSvgUrl);
+        texture.flipY = false;
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.generateMipmaps = false;
+        texture.anisotropy = 16;
+        resolve(texture);
+      };
+      img.src = robotSvgUrl;
+    });
   }
 
   private createRobot(): void {
     const robotGroup = new THREE.Group();
 
-    const texture = this.createSVGTexture();
-    const geometry = new THREE.PlaneGeometry(0.2, 0.2);
-    const material = new THREE.MeshBasicMaterial({
-      map: texture,
-      transparent: true,
-      depthTest: true,
-      depthWrite: false,
-      side: THREE.DoubleSide,
+    this.createSVGTexture().then((texture) => {
+      if (!this.robotGroup) return;
+      const geometry = new THREE.PlaneGeometry(0.2, 0.2);
+      const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        depthTest: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        alphaTest: 0.1,
+      });
+      const iconMesh = new THREE.Mesh(geometry, material);
+      iconMesh.position.set(0, 0, 0);
+      iconMesh.rotation.set(0, 0, Math.PI / 4);
+      this.iconMesh = iconMesh;
+      robotGroup.add(iconMesh);
+    }).catch((error) => {
+      console.error('[RobotLayer] Failed to load SVG texture:', error);
     });
-    const iconMesh = new THREE.Mesh(geometry, material);
-    iconMesh.position.set(0, 0, 0);
-    iconMesh.rotation.set(0, 0, Math.PI / 4);
-    this.iconMesh = iconMesh;
-    robotGroup.add(iconMesh);
 
     this.robotGroup = robotGroup;
     this.object3D = robotGroup;

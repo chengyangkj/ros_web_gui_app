@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { toast } from 'react-toastify';
 import { RosbridgeConnection } from '../utils/RosbridgeConnection';
 import { TF2JS } from '../utils/tf2js';
 import { LayerManager } from './layers/LayerManager';
@@ -89,8 +90,7 @@ export function MapView({ connection }: MapViewProps) {
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const layerManagerRef = useRef<LayerManager | null>(null);
-  const [status, setStatus] = useState('初始化中...');
-  const [layerConfigs, setLayerConfigs] = useState<LayerConfigMap>(DEFAULT_LAYER_CONFIGS);
+  const [layerConfigs] = useState<LayerConfigMap>(DEFAULT_LAYER_CONFIGS);
   const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
   const viewModeRef = useRef<'2d' | '3d'>('2d');
 
@@ -119,7 +119,9 @@ export function MapView({ connection }: MapViewProps) {
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
     controls.screenSpacePanning = false;
-    controls.minDistance = 1;
+    // minDistance 控制最大放大比例（值越小，放大倍数越大）
+    // maxDistance 控制最大缩小比例（值越大，缩小倍数越大）
+    controls.minDistance = 0.1;
     controls.maxDistance = 1000;
     controls.target.set(0, 0, 0);
     controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
@@ -170,17 +172,13 @@ export function MapView({ connection }: MapViewProps) {
 
   useEffect(() => {
     if (!connection.isConnected() || !layerManagerRef.current) {
-      setStatus('未连接');
       return;
     }
-
-    setStatus('连接成功，初始化消息解析器...');
 
     const initializeAndSubscribe = async () => {
       try {
         await connection.initializeMessageReaders();
-        setStatus('消息解析器初始化完成');
-
+        
         TF2JS.getInstance().initialize(connection);
         layerManagerRef.current?.setLayerConfigs(layerConfigs);
 
@@ -188,10 +186,9 @@ export function MapView({ connection }: MapViewProps) {
           .filter((c) => c.enabled && c.visible && c.topic)
           .map((c) => c.topic)
           .join(', ');
-        setStatus(`已初始化图层${topicList ? `: ${topicList}` : ''}`);
       } catch (error) {
         console.error('Failed to initialize message readers:', error);
-        setStatus('初始化失败，使用默认配置...');
+        toast.error('初始化失败，使用默认配置...');
         TF2JS.getInstance().initialize(connection);
         layerManagerRef.current?.setLayerConfigs(layerConfigs);
       }
@@ -231,7 +228,8 @@ export function MapView({ connection }: MapViewProps) {
       (controls as any).zoomToCursor = true;
       
       const targetZ = 0;
-      const distance = Math.max(Math.abs(camera.position.z - targetZ), 0.1);
+      // 使用 controls.minDistance 来限制最小距离，而不是硬编码 0.1
+      const distance = Math.max(Math.abs(camera.position.z - targetZ), controls.minDistance);
       camera.up.set(0, 0, 1);
       camera.position.set(controls.target.x, controls.target.y, targetZ + distance);
       controls.target.set(controls.target.x, controls.target.y, targetZ);
@@ -269,7 +267,6 @@ export function MapView({ connection }: MapViewProps) {
 
   return (
     <div className="MapView">
-      <div className="StatusBar">{status}</div>
       <div className="ViewControls">
         <button
           className={`ViewButton ${viewMode === '2d' ? 'active' : ''}`}
