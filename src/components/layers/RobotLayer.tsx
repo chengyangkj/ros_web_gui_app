@@ -42,17 +42,6 @@ export class RobotLayer extends BaseLayer {
   private createRobot(): void {
     const robotGroup = new THREE.Group();
 
-    const axesHelper = new THREE.AxesHelper(0.3);
-    robotGroup.add(axesHelper);
-
-    const arrowHelper = new THREE.ArrowHelper(
-      new THREE.Vector3(1, 0, 0),
-      new THREE.Vector3(0, 0, 0),
-      0.3,
-      0xff0000
-    );
-    robotGroup.add(arrowHelper);
-
     const texture = this.createSVGTexture();
     const geometry = new THREE.PlaneGeometry(0.2, 0.2);
     const material = new THREE.MeshBasicMaterial({

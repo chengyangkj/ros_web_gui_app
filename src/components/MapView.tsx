@@ -72,6 +72,14 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     enabled: true,
     visible: true,
   },
+  tf: {
+    id: 'tf',
+    name: 'TF坐标系',
+    topic: null,
+    messageType: null,
+    enabled: true,
+    visible: true,
+  },
 };
 
 export function MapView({ connection }: MapViewProps) {
@@ -122,8 +130,6 @@ export function MapView({ connection }: MapViewProps) {
     
     controlsRef.current = controls;
 
-    const axesHelper = new THREE.AxesHelper(2);
-    scene.add(axesHelper);
 
     const layerManager = new LayerManager(scene, connection);
     layerManagerRef.current = layerManager;
