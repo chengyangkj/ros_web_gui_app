@@ -2,17 +2,7 @@ import * as THREE from 'three';
 import { BaseLayer } from './BaseLayer';
 import type { LayerConfig } from '../../types/LayerConfig';
 import type { RosbridgeConnection } from '../../utils/RosbridgeConnection';
-
-interface OccupancyGrid {
-  info?: {
-    resolution: number;
-    width: number;
-    height: number;
-    origin: {
-      position: { x: number; y: number; z: number };
-    };
-  };
-}
+import { MapManager, type OccupancyGrid } from '../../utils/MapManager';
 
 export class GridLayer extends BaseLayer {
   private gridHelper: THREE.GridHelper | null = null;
@@ -21,11 +11,29 @@ export class GridLayer extends BaseLayer {
   private mapHeight: number = 0;
   private mapOriginX: number = 0;
   private mapOriginY: number = 0;
+  private mapManager: MapManager;
+  private handleMapUpdate: ((map: OccupancyGrid | null) => void) | null = null;
 
   constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
+    this.mapManager = MapManager.getInstance();
     this.createDefaultGrid();
-    if (config.topic) {
+    
+    if (config.topic === '/map') {
+      console.log('[GridLayer] Using MapManager for /map topic');
+      this.handleMapUpdate = (map: OccupancyGrid | null) => {
+        if (map && this.config.enabled) {
+          this.update(map);
+        }
+      };
+      
+      this.mapManager.addOccupancyGridListener(this.handleMapUpdate);
+      
+      const currentMap = this.mapManager.getOccupancyGrid();
+      if (currentMap && this.config.enabled) {
+        this.update(currentMap);
+      }
+    } else if (config.topic) {
       this.subscribe(config.topic, this.getMessageType());
     }
   }
@@ -127,7 +135,23 @@ export class GridLayer extends BaseLayer {
     this.scene.add(this.gridHelper);
   }
 
+  setConnection(connection: RosbridgeConnection): void {
+    this.connection = connection;
+    
+    if (this.config.topic === '/map') {
+      return;
+    }
+    
+    if (this.config.topic && connection.isConnected()) {
+      this.subscribe(this.config.topic, this.getMessageType());
+    }
+  }
+
   dispose(): void {
+    if (this.handleMapUpdate) {
+      this.mapManager.removeOccupancyGridListener(this.handleMapUpdate);
+      this.handleMapUpdate = null;
+    }
     if (this.gridHelper) {
       this.scene.remove(this.gridHelper);
       this.gridHelper.dispose();

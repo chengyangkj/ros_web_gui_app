@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { BaseLayer } from './BaseLayer';
 import type { LayerConfig } from '../../types/LayerConfig';
 import type { RosbridgeConnection } from '../../utils/RosbridgeConnection';
-import { TopologyMapManager } from '../../utils/TopologyMapManager';
-import type { TopologyMap } from '../../utils/TopologyMapManager';
+import { MapManager } from '../../utils/MapManager';
+import type { TopologyMap } from '../../utils/MapManager';
 
 interface TopoPoint {
   name: string;
@@ -49,11 +49,8 @@ export class TopoLayer extends BaseLayer {
     this.count = (config as any).count || 2;
     
     // 从 MapManager 加载初始地图数据
-    const mapManager = TopologyMapManager.getInstance();
-    if (connection) {
-      mapManager.initialize(connection);
-    }
-    const initialMap = mapManager.getMap();
+    const mapManager = MapManager.getInstance();
+    const initialMap = mapManager.getTopologyMap();
     if (initialMap.points && Array.isArray(initialMap.points) && initialMap.points.length > 0) {
       this.update(initialMap);
     }
@@ -62,11 +59,7 @@ export class TopoLayer extends BaseLayer {
     const handleMapUpdate = (map: TopologyMap) => {
       this.update(map);
     };
-    mapManager.addListener(handleMapUpdate);
-    
-    if (config.topic) {
-      this.subscribe(config.topic, this.getMessageType());
-    }
+    mapManager.addTopologyListener(handleMapUpdate);
     this.startAnimation();
   }
 
@@ -256,8 +249,8 @@ export class TopoLayer extends BaseLayer {
     }
     
     // 更新 MapManager（如果是从 topic 接收的消息，不触发监听器避免循环）
-    const mapManager = TopologyMapManager.getInstance();
-    mapManager.updateMap(msg, false);
+    const mapManager = MapManager.getInstance();
+    mapManager.updateTopologyMap(msg, false);
     
     this.lastPoints = msg.points;
     this.lastRoutes = msg.routes || [];

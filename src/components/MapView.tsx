@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { toast } from 'react-toastify';
 import { RosbridgeConnection } from '../utils/RosbridgeConnection';
 import { TF2JS } from '../utils/tf2js';
+import { MapManager } from '../utils/MapManager';
 import { LayerManager } from './layers/LayerManager';
 import type { LayerConfigMap } from '../types/LayerConfig';
 import { LayerSettingsPanel } from './LayerSettingsPanel';
@@ -270,7 +271,7 @@ export function MapView({ connection }: MapViewProps) {
 
     canvas.addEventListener('click', handleClick);
 
-
+    console.log('[MapView] Creating LayerManager');
     const layerManager = new LayerManager(scene, connection);
     layerManagerRef.current = layerManager;
 
@@ -383,11 +384,20 @@ export function MapView({ connection }: MapViewProps) {
       try {
         await connection.initializeMessageReaders();
         
+        console.log('[MapView] Initializing MapManager after MessageReaders are ready', { 
+          hasConnection: !!connection, 
+          isConnected: connection.isConnected() 
+        });
+        const mapManager = MapManager.getInstance();
+        mapManager.initialize(connection);
+        
         TF2JS.getInstance().initialize(connection);
         layerManagerRef.current?.setLayerConfigs(layerConfigs);
       } catch (error) {
         console.error('Failed to initialize message readers:', error);
         toast.error('初始化失败，使用默认配置...');
+        const mapManager = MapManager.getInstance();
+        mapManager.initialize(connection);
         TF2JS.getInstance().initialize(connection);
         layerManagerRef.current?.setLayerConfigs(layerConfigs);
       }

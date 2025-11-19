@@ -307,6 +307,7 @@ export class RosbridgeConnection {
 
     if (this.subscribers.has(topicName)) {
       this.subscribers.get(topicName)?.unsubscribe();
+      console.warn(`[RosbridgeConnection] subscribe ${topicName} already subscribed, unsubscribing...`);
     }
 
     let actualMessageType = messageType;
@@ -347,10 +348,23 @@ export class RosbridgeConnection {
           const parsedMessage = currentReader.readMessage(bytes);
           callback(parsedMessage);
         } catch (error) {
-          console.error(`Failed to parse message on ${topicName}:`, error, message);
+          console.error(`[RosbridgeConnection] Failed to parse message on ${topicName}:`, {
+            error,
+            messageType: actualMessageType,
+            requestedType: messageType,
+            messageKeys: Object.keys(message || {}),
+            hasBytes: !!(message as any)?.bytes,
+            bytesLength: (message as any)?.bytes?.length
+          });
           callback(message);
         }
       } else {
+        console.warn(`[RosbridgeConnection] No MessageReader found for ${topicName}`, {
+          actualType: actualMessageType,
+          requestedType: messageType,
+          availableReaders: Array.from(this.messageReaders.keys()),
+          messageKeys: Object.keys(message || {})
+        });
         callback(message);
       }
     });

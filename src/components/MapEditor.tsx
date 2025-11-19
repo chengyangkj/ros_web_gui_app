@@ -7,8 +7,8 @@ import { TF2JS } from '../utils/tf2js';
 import { LayerManager } from './layers/LayerManager';
 import type { LayerConfigMap } from '../types/LayerConfig';
 import { TopoLayer } from './layers/TopoLayer';
-import { TopologyMapManager } from '../utils/TopologyMapManager';
-import type { TopoPoint, Route, RouteInfo, TopologyMap } from '../utils/TopologyMapManager';
+import { MapManager } from '../utils/MapManager';
+import type { TopoPoint, Route, RouteInfo, TopologyMap } from '../utils/MapManager';
 import {
   CommandManager,
   AddPointCommand,
@@ -20,6 +20,8 @@ import {
   ModifyGridCommand,
   type GridCellChange,
 } from '../utils/CommandManager';
+import { exportMap } from '../utils/mapExporter';
+import { importMap } from '../utils/mapImporter';
 import './MapEditor.css';
 
 interface MapEditorProps {
@@ -69,11 +71,14 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isRotating, setIsRotating] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [exportMapName, setExportMapName] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [dragStartPos, setDragStartPos] = useState<THREE.Vector2 | null>(null);
   const [routeStartPoint, setRouteStartPoint] = useState<string | null>(null);
   const [lineStartPoint, setLineStartPoint] = useState<THREE.Vector3 | null>(null);
   const raycasterRef = useRef<THREE.Raycaster | null>(null);
-  const mapManagerRef = useRef<TopologyMapManager>(TopologyMapManager.getInstance());
+  const mapManagerRef = useRef<MapManager>(MapManager.getInstance());
   const commandManagerRef = useRef<CommandManager>(new CommandManager());
   const selectedPointRef = useRef<THREE.Group | null>(null);
   const previewLineRef = useRef<THREE.Line | null>(null);
@@ -204,7 +209,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         const handleMapUpdate = (_map: TopologyMap) => {
           updateTopoMap();
         };
-        mapManager.addListener(handleMapUpdate);
+        mapManager.addTopologyListener(handleMapUpdate);
         
         // 获取 topology layer 引用
         setTimeout(() => {
@@ -222,7 +227,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         }, 500);
         
         return () => {
-          mapManager.removeListener(handleMapUpdate);
+          mapManager.removeTopologyListener(handleMapUpdate);
         };
       } catch (error) {
         console.error('Failed to initialize message readers:', error);
@@ -316,14 +321,14 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
               setRouteStartPoint(point.name);
               // 创建预览线段
               const mapManager = mapManagerRef.current;
-              const startPoint = mapManager.getPoint(point.name);
+              const startPoint = mapManager.getTopologyPoint(point.name);
               if (startPoint) {
                 createPreviewLine(startPoint.x, startPoint.y, startPoint.x, startPoint.y);
               }
             } else if (routeStartPoint !== point.name) {
               // 检查是否已存在相同方向的路线（A->B 和 B->A 是不同的路线）
               const mapManager = mapManagerRef.current;
-              const exists = mapManager.getRoutes().some(
+              const exists = mapManager.getTopologyRoutes().some(
                 r => r.from_point === routeStartPoint && r.to_point === point.name
               );
               if (!exists) {
@@ -406,7 +411,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         if (obj.userData.isTopoPoint && obj.userData.topoPoint) {
           const point = obj.userData.topoPoint;
           const mapManager = mapManagerRef.current;
-          const pointData = mapManager.getPoint(point.name);
+          const pointData = mapManager.getTopologyPoint(point.name);
           if (pointData) {
             setSelectedPoint(pointData);
             setSelectedRoute(null);
@@ -431,7 +436,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       
       // 生成唯一的点位名称
       const mapManager = mapManagerRef.current;
-      const existingPoints = mapManager.getPoints();
+      const existingPoints = mapManager.getTopologyPoints();
       let pointIndex = existingPoints.length;
       let pointName = `NAV_POINT_${pointIndex}`;
       while (existingPoints.some(p => p.name === pointName)) {
@@ -502,7 +507,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
             if (obj.userData.isTopoPoint && obj.userData.topoPoint) {
               const point = obj.userData.topoPoint;
               const mapManager = mapManagerRef.current;
-              const pointData = mapManager.getPoint(point.name);
+              const pointData = mapManager.getTopologyPoint(point.name);
               if (pointData) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -544,7 +549,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
             if (obj.userData.isTopoPoint && obj.userData.topoPoint) {
               const point = obj.userData.topoPoint;
               const mapManager = mapManagerRef.current;
-              const pointData = mapManager.getPoint(point.name);
+              const pointData = mapManager.getTopologyPoint(point.name);
               if (pointData) {
                 event.preventDefault();
                 event.stopPropagation();
@@ -665,7 +670,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
           ...selectedPoint,
           theta: theta,
         };
-        mapManagerRef.current.setPoint(updatedPoint);
+        mapManagerRef.current.setTopologyPoint(updatedPoint);
         setSelectedPoint(updatedPoint);
         updateTopoMap();
       }
@@ -681,7 +686,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
           x: worldPos.x,
           y: worldPos.y,
         };
-        mapManagerRef.current.setPoint(updatedPoint);
+        mapManagerRef.current.setTopologyPoint(updatedPoint);
         setSelectedPoint(updatedPoint);
         updateTopoMap();
       }
@@ -716,7 +721,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     }
     
     if ((isDragging || isRotating) && selectedPoint && dragStartPointRef.current) {
-      const currentPoint = mapManagerRef.current.getPoint(selectedPoint.name);
+      const currentPoint = mapManagerRef.current.getTopologyPoint(selectedPoint.name);
       if (currentPoint && dragStartPointRef.current.name === currentPoint.name) {
         const command = new ModifyPointCommand(mapManagerRef.current, dragStartPointRef.current, currentPoint, updateTopoMap);
         commandManagerRef.current.executeCommand(command);
@@ -793,7 +798,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       geometry.attributes.position.needsUpdate = true;
     } else if (currentTool === 'addRoute' && routeStartPoint) {
       const mapManager = mapManagerRef.current;
-      const startPoint = mapManager.getPoint(routeStartPoint);
+      const startPoint = mapManager.getTopologyPoint(routeStartPoint);
       if (!startPoint) return;
       
       const worldPos = getWorldPosition(event);
@@ -831,7 +836,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
 
   const updateTopoMap = () => {
     const mapManager = mapManagerRef.current;
-    const topologyMap = mapManager.getMap();
+    const topologyMap = mapManager.getTopologyMap();
     
     if (topoLayerRef.current) {
       (topoLayerRef.current as any).update(topologyMap);
@@ -839,7 +844,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       const currentSelectedPoint = selectedPointStateRef.current;
       const currentSelectedRoute = selectedRouteStateRef.current;
       if (currentSelectedPoint) {
-        const currentPoint = mapManager.getPoint(currentSelectedPoint.name);
+        const currentPoint = mapManager.getTopologyPoint(currentSelectedPoint.name);
         if (currentPoint && 'setSelectedPoint' in topoLayerRef.current) {
           (topoLayerRef.current as any).setSelectedPoint(currentPoint);
         }
@@ -853,30 +858,20 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   const handleSave = () => {
     const mapManager = mapManagerRef.current;
     try {
-      mapManager.saveAndPublish(connection);
+      mapManager.saveAndPublishTopology(connection);
       toast.success('拓扑地图已保存并发布');
     } catch (error) {
       console.error('Failed to save/publish topology map:', error);
-      mapManager.save();
+      mapManager.saveTopology();
       toast.warning('保存成功，但发布失败');
     }
     
-    if (occupancyGridLayerRef.current && connection.isConnected()) {
-      const mapMessage = occupancyGridLayerRef.current.getMapMessage();
-      if (mapMessage) {
-        const now = Date.now();
-        mapMessage.header.stamp = {
-          sec: Math.floor(now / 1000),
-          nsec: (now % 1000) * 1000000,
-        };
-        try {
-          connection.publish('/map/update', 'nav_msgs/OccupancyGrid', mapMessage);
-          toast.success('栅格地图已发布到 /map/update');
-        } catch (error) {
-          console.error('Failed to publish occupancy grid:', error);
-          toast.warning('栅格地图发布失败');
-        }
-      }
+    try {
+      mapManagerRef.current.publishOccupancyGrid(connection);
+      toast.success('栅格地图已发布到 /map/update');
+    } catch (error) {
+      console.error('Failed to publish occupancy grid:', error);
+      toast.warning('栅格地图发布失败');
     }
   };
 
@@ -981,7 +976,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     const robotTheta = robotEuler.z;
     
     const mapManager = mapManagerRef.current;
-    const existingPoints = mapManager.getPoints();
+    const existingPoints = mapManager.getTopologyPoints();
     let pointIndex = existingPoints.length;
     let pointName = `NAV_POINT_${pointIndex}`;
     while (existingPoints.some(p => p.name === pointName)) {
@@ -1007,11 +1002,120 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     toast.success(`已添加机器人当前位置为导航点: ${pointName}`);
   };
 
+  const handleExportMap = () => {
+    setShowExportDialog(true);
+    setExportMapName('map');
+  };
+
+  const handleExportConfirm = async () => {
+    if (!exportMapName.trim()) {
+      toast.error('请输入地图名称');
+      return;
+    }
+
+    try {
+      const occupancyGrid = occupancyGridLayerRef.current?.getMapMessage();
+      const topologyMap = mapManagerRef.current.getTopologyMap();
+      
+      if (!occupancyGrid && (!topologyMap.points || topologyMap.points.length === 0)) {
+        toast.error('没有可导出的地图数据');
+        return;
+      }
+      
+      await exportMap(
+        occupancyGrid || null,
+        (topologyMap.points && topologyMap.points.length > 0) ? topologyMap : null,
+        exportMapName.trim()
+      );
+      toast.success(`地图已导出为 ${exportMapName.trim()}.zip`);
+      setShowExportDialog(false);
+      setExportMapName('');
+    } catch (error) {
+      console.error('导出地图失败:', error);
+      toast.error('导出地图失败');
+    }
+  };
+
+  const handleImportMap = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.zip')) {
+      toast.error('请选择zip格式的地图文件');
+      return;
+    }
+
+    try {
+      const { occupancyGrid, topologyMap } = await importMap(file);
+
+      if (occupancyGrid) {
+        mapManagerRef.current.updateOccupancyGrid(occupancyGrid, true);
+        toast.success('栅格地图导入成功');
+      }
+
+      if (topologyMap && topologyMap.points && topologyMap.points.length > 0) {
+        const mapManager = mapManagerRef.current;
+        mapManager.updateTopologyMap(topologyMap, false);
+        updateTopoMap();
+        toast.success('拓扑地图导入成功');
+      }
+
+      if (!occupancyGrid && (!topologyMap || !topologyMap.points || topologyMap.points.length === 0)) {
+        toast.warning('zip文件中没有找到有效的地图数据');
+      }
+    } catch (error) {
+      console.error('导入地图失败:', error);
+      toast.error('导入地图失败: ' + (error instanceof Error ? error.message : '未知错误'));
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   return (
     <div className="MapEditor">
       <div className="EditorHeader">
         <h2>地图编辑</h2>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button
+            className="SaveButton"
+            onClick={handleImportMap}
+            type="button"
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#FF9800',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '14px',
+            }}
+            title="导入地图zip文件"
+          >
+            📥 导入地图
+          </button>
+          <button
+            className="SaveButton"
+            onClick={handleExportMap}
+            type="button"
+            style={{
+              padding: '8px 16px',
+              backgroundColor: '#2196F3',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '14px',
+            }}
+            title="导出地图为map.zip"
+          >
+            📦 导出地图
+          </button>
           <button
             className="SaveButton"
             onClick={handleSave}
@@ -1033,6 +1137,13 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
             ×
           </button>
         </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".zip"
+          style={{ display: 'none' }}
+          onChange={handleFileSelect}
+        />
       </div>
       <div className="EditorContent">
         <div className="Toolbar">
@@ -1123,8 +1234,8 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         </div>
         {(currentTool === 'brush' || currentTool === 'eraser' || currentTool === 'drawLine') && (
           <div style={{ padding: '10px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px' }}>
-              <span>画笔大小:</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: 'white' }}>
+              <span style={{ color: 'white' }}>画笔大小:</span>
               <input
                 type="range"
                 min="0.05"
@@ -1134,7 +1245,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
                 onChange={(e) => setBrushSize(parseFloat(e.target.value))}
                 style={{ flex: 1 }}
               />
-              <span style={{ minWidth: '40px', textAlign: 'right' }}>{brushSize.toFixed(2)}m</span>
+              <span style={{ minWidth: '40px', textAlign: 'right', color: 'white' }}>{brushSize.toFixed(2)}m</span>
             </label>
           </div>
         )}
@@ -1304,6 +1415,93 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
           )}
         </div>
       </div>
+      {showExportDialog && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+        }}>
+          <div style={{
+            backgroundColor: '#2a2a2a',
+            padding: '20px',
+            borderRadius: '8px',
+            minWidth: '300px',
+          }}>
+            <h3 style={{ marginTop: 0, marginBottom: '15px', color: 'white' }}>导出地图</h3>
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', color: 'white' }}>
+                地图名称:
+              </label>
+              <input
+                type="text"
+                value={exportMapName}
+                onChange={(e) => setExportMapName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleExportConfirm();
+                  } else if (e.key === 'Escape') {
+                    setShowExportDialog(false);
+                    setExportMapName('');
+                  }
+                }}
+                autoFocus
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  backgroundColor: '#1a1a1a',
+                  color: 'white',
+                  border: '1px solid #444',
+                  borderRadius: '4px',
+                  fontSize: '14px',
+                }}
+                placeholder="例如: map"
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowExportDialog(false);
+                  setExportMapName('');
+                }}
+                type="button"
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#555',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={handleExportConfirm}
+                type="button"
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#2196F3',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                }}
+              >
+                导出
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

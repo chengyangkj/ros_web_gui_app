@@ -1,4 +1,4 @@
-import type { TopoPoint, Route } from './TopologyMapManager';
+import type { TopoPoint, Route } from './MapManager';
 
 export interface Command {
   execute(): void;
@@ -62,12 +62,12 @@ export class AddPointCommand implements Command {
   ) {}
 
   execute(): void {
-    this.mapManager.setPoint(this.point);
+    this.mapManager.setTopologyPoint(this.point);
     this.onUpdate();
   }
 
   undo(): void {
-    this.mapManager.deletePoint(this.point.name);
+    this.mapManager.deleteTopologyPoint(this.point.name);
     this.onUpdate();
   }
 
@@ -84,21 +84,21 @@ export class DeletePointCommand implements Command {
     private point: TopoPoint,
     private onUpdate: () => void
   ) {
-    const routes = this.mapManager.getRoutes();
+    const routes = this.mapManager.getTopologyRoutes();
     this.routesToRestore = routes.filter(
       (r: Route) => r.from_point === point.name || r.to_point === point.name
     );
   }
 
   execute(): void {
-    this.mapManager.deletePoint(this.point.name);
+    this.mapManager.deleteTopologyPoint(this.point.name);
     this.onUpdate();
   }
 
   undo(): void {
-    this.mapManager.setPoint(this.point);
+    this.mapManager.setTopologyPoint(this.point);
     for (const route of this.routesToRestore) {
-      this.mapManager.setRoute(route);
+      this.mapManager.setTopologyRoute(route);
     }
     this.onUpdate();
   }
@@ -118,13 +118,13 @@ export class ModifyPointCommand implements Command {
 
   execute(): void {
     const oldName = this.oldPoint.name !== this.newPoint.name ? this.oldPoint.name : undefined;
-    this.mapManager.setPoint(this.newPoint, oldName);
+    this.mapManager.setTopologyPoint(this.newPoint, oldName);
     this.onUpdate();
   }
 
   undo(): void {
     const oldName = this.newPoint.name !== this.oldPoint.name ? this.newPoint.name : undefined;
-    this.mapManager.setPoint(this.oldPoint, oldName);
+    this.mapManager.setTopologyPoint(this.oldPoint, oldName);
     this.onUpdate();
   }
 
@@ -141,12 +141,12 @@ export class AddRouteCommand implements Command {
   ) {}
 
   execute(): void {
-    this.mapManager.setRoute(this.route);
+    this.mapManager.setTopologyRoute(this.route);
     this.onUpdate();
   }
 
   undo(): void {
-    this.mapManager.deleteRoute(this.route);
+    this.mapManager.deleteTopologyRoute(this.route);
     this.onUpdate();
   }
 
@@ -163,12 +163,12 @@ export class DeleteRouteCommand implements Command {
   ) {}
 
   execute(): void {
-    this.mapManager.deleteRoute(this.route);
+    this.mapManager.deleteTopologyRoute(this.route);
     this.onUpdate();
   }
 
   undo(): void {
-    this.mapManager.setRoute(this.route);
+    this.mapManager.setTopologyRoute(this.route);
     this.onUpdate();
   }
 
@@ -186,12 +186,12 @@ export class ModifyRouteCommand implements Command {
   ) {}
 
   execute(): void {
-    this.mapManager.setRoute(this.newRoute);
+    this.mapManager.setTopologyRoute(this.newRoute);
     this.onUpdate();
   }
 
   undo(): void {
-    this.mapManager.setRoute(this.oldRoute);
+    this.mapManager.setTopologyRoute(this.oldRoute);
     this.onUpdate();
   }
 
@@ -241,6 +241,10 @@ export class ModifyGridCommand implements Command {
       this.occupancyGridLayer.lastMessage.data = Array.isArray(data) 
         ? [...data] 
         : Array.from(data);
+      
+      if (this.occupancyGridLayer.mapManager) {
+        this.occupancyGridLayer.mapManager.updateOccupancyGrid(this.occupancyGridLayer.lastMessage, false);
+      }
     }
     
     this.onUpdate();
@@ -274,6 +278,10 @@ export class ModifyGridCommand implements Command {
       this.occupancyGridLayer.lastMessage.data = Array.isArray(data) 
         ? [...data] 
         : Array.from(data);
+      
+      if (this.occupancyGridLayer.mapManager) {
+        this.occupancyGridLayer.mapManager.updateOccupancyGrid(this.occupancyGridLayer.lastMessage, false);
+      }
     }
     
     this.onUpdate();

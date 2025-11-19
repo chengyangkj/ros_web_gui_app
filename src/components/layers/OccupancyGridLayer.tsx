@@ -9,30 +9,8 @@ import {
   rgbaToCssString,
 } from '../../utils/colorUtils';
 import type { ColorModes } from '../../utils/colorUtils';
+import { MapManager, type OccupancyGrid } from '../../utils/MapManager';
 
-interface OccupancyGrid {
-  header: {
-    frame_id: string;
-    stamp: {
-      sec: number;
-      nsec: number;
-    };
-  };
-  info: {
-    map_load_time: {
-      sec: number;
-      nsec: number;
-    };
-    resolution: number;
-    width: number;
-    height: number;
-    origin: {
-      position: { x: number; y: number; z: number };
-      orientation: { x: number; y: number; z: number; w: number };
-    };
-  };
-  data: number[] | Int8Array;
-}
 
 interface OccupancyGridSettings {
   colorMode?: ColorModes;
@@ -57,6 +35,8 @@ export class OccupancyGridLayer extends BaseLayer {
   private lastWidth: number = 0;
   private lastHeight: number = 0;
   private lastMessage: OccupancyGrid | null = null;
+  private mapManager: MapManager;
+  private handleMapUpdate: ((map: OccupancyGrid | null) => void) | null = null;
 
   constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
@@ -69,18 +49,66 @@ export class OccupancyGridLayer extends BaseLayer {
       alpha: (config as any).alpha ?? 1.0,
       height: (config as any).height ?? 0,
     };
-    if (config.topic) {
-      this.subscribe(config.topic, this.getMessageType());
+    this.mapManager = MapManager.getInstance();
+    
+    console.log('[OccupancyGridLayer] Constructor', { 
+      topic: config.topic, 
+      enabled: this.config.enabled,
+      layerId: config.id
+    });
+    
+    if (config.topic === '/map') {
+      console.log('[OccupancyGridLayer] Using MapManager for /map topic');
+      this.handleMapUpdate = (map: OccupancyGrid | null) => {
+        console.log('[OccupancyGridLayer] handleMapUpdate called', { 
+          hasMap: !!map, 
+          enabled: this.config.enabled,
+          layerId: config.id
+        });
+        if (map && this.config.enabled) {
+          console.log('[OccupancyGridLayer] Rendering map from MapManager', { 
+            width: map.info?.width, 
+            height: map.info?.height,
+            layerId: config.id
+          });
+          this.renderMap(map);
+        }
+      };
+      
+      this.mapManager.addOccupancyGridListener(this.handleMapUpdate);
+      console.log('[OccupancyGridLayer] Added listener to MapManager', { layerId: config.id });
+      
+      const currentMap = this.mapManager.getOccupancyGrid();
+      console.log('[OccupancyGridLayer] Current map from MapManager', { 
+        hasMap: !!currentMap, 
+        enabled: this.config.enabled,
+        layerId: config.id
+      });
+      if (currentMap && this.config.enabled) {
+        console.log('[OccupancyGridLayer] Rendering initial map', { 
+          width: currentMap.info?.width, 
+          height: currentMap.info?.height,
+          layerId: config.id
+        });
+        this.renderMap(currentMap);
+      }
+    } else {
+      console.log('[OccupancyGridLayer] Direct subscription for topic:', config.topic, { layerId: config.id });
+      if (config.topic) {
+        this.subscribe(config.topic, this.getMessageType());
+      }
     }
   }
-
-  getMessageType(): string | null {
-    return 'nav_msgs/OccupancyGrid';
-  }
-
-  update(message: unknown): void {
-    const msg = message as OccupancyGrid;
+  
+  private renderMap(msg: OccupancyGrid): void {
+    console.log('[OccupancyGridLayer] renderMap called', { 
+      hasInfo: !!msg.info, 
+      hasData: !!msg.data,
+      width: msg.info?.width,
+      height: msg.info?.height 
+    });
     if (!msg.info || !msg.data) {
+      console.log('[OccupancyGridLayer] renderMap skipped: missing info or data');
       return;
     }
 
@@ -138,6 +166,53 @@ export class OccupancyGridLayer extends BaseLayer {
     );
     
     this.mesh.quaternion.copy(originQuaternion);
+  }
+
+  getMessageType(): string | null {
+    return 'nav_msgs/OccupancyGrid';
+  }
+
+  setConnection(connection: RosbridgeConnection): void {
+    console.log('[OccupancyGridLayer] setConnection called', { 
+      topic: this.config.topic,
+      layerId: this.config.id,
+      isConnected: connection.isConnected()
+    });
+    this.connection = connection;
+    
+    if (this.config.topic === '/map') {
+      console.log('[OccupancyGridLayer] Skipping BaseLayer subscription for /map topic, using MapManager instead', { layerId: this.config.id });
+      return;
+    }
+    
+    if (this.config.topic && connection.isConnected()) {
+      console.log('[OccupancyGridLayer] Subscribing directly to topic:', this.config.topic, { layerId: this.config.id });
+      this.subscribe(this.config.topic, this.getMessageType());
+    }
+  }
+
+  update(message: unknown): void {
+    const msg = message as OccupancyGrid;
+    console.log('[OccupancyGridLayer] update called', { 
+      topic: this.config.topic,
+      layerId: this.config.id,
+      hasInfo: !!msg.info, 
+      hasData: !!msg.data,
+      width: msg.info?.width,
+      height: msg.info?.height
+    });
+    if (!msg.info || !msg.data) {
+      console.log('[OccupancyGridLayer] update skipped: missing info or data', { layerId: this.config.id });
+      return;
+    }
+
+    if (this.config.topic === '/map') {
+      console.warn('[OccupancyGridLayer] update called for /map topic, but should use MapManager instead. Ignoring.', { layerId: this.config.id });
+      return;
+    } else {
+      console.log('[OccupancyGridLayer] Direct rendering', { layerId: this.config.id });
+      this.renderMap(msg);
+    }
   }
 
   private createTexture(width: number, height: number): THREE.DataTexture {
@@ -224,7 +299,36 @@ export class OccupancyGridLayer extends BaseLayer {
   }
 
   setConfig(config: LayerConfig): void {
-    super.setConfig(config);
+    const oldTopic = this.config.topic;
+    this.config = config;
+    
+    if (oldTopic !== config.topic && this.connection?.isConnected()) {
+      if (oldTopic === '/map') {
+        if (this.handleMapUpdate) {
+          this.mapManager.removeOccupancyGridListener(this.handleMapUpdate);
+          this.handleMapUpdate = null;
+        }
+        this.unsubscribe();
+      } else {
+        this.unsubscribe();
+      }
+      
+      if (config.topic === '/map') {
+        this.handleMapUpdate = (map: OccupancyGrid | null) => {
+          if (map && this.config.enabled) {
+            this.renderMap(map);
+          }
+        };
+        this.mapManager.addOccupancyGridListener(this.handleMapUpdate);
+        const currentMap = this.mapManager.getOccupancyGrid();
+        if (currentMap && this.config.enabled) {
+          this.renderMap(currentMap);
+        }
+      } else if (config.topic) {
+        this.subscribe(config.topic, this.getMessageType());
+      }
+    }
+    
     const oldHeight = this.settings.height;
     const oldAlpha = this.settings.alpha;
     const oldColorMode = this.settings.colorMode;
@@ -369,16 +473,17 @@ export class OccupancyGridLayer extends BaseLayer {
   }
 
   getMapMessage(): OccupancyGrid | null {
-    if (!this.lastMessage || !this.lastData) {
-      return null;
+    if (this.lastMessage) {
+      return this.lastMessage;
     }
-    
-    const cloned = JSON.parse(JSON.stringify(this.lastMessage));
-    cloned.data = Array.isArray(this.lastData) ? [...this.lastData] : Array.from(this.lastData);
-    return cloned;
+    return this.mapManager.getOccupancyGrid();
   }
 
   dispose(): void {
+    if (this.handleMapUpdate) {
+      this.mapManager.removeOccupancyGridListener(this.handleMapUpdate);
+      this.handleMapUpdate = null;
+    }
     if (this.texture) {
       this.texture.dispose();
       this.texture = null;
