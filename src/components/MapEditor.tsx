@@ -68,6 +68,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   const [selectedPoint, setSelectedPoint] = useState<TopoPoint | null>(null);
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isRotating, setIsRotating] = useState(false);
   const [dragStartPos, setDragStartPos] = useState<THREE.Vector2 | null>(null);
   const [routeStartPoint, setRouteStartPoint] = useState<string | null>(null);
   const [lineStartPoint, setLineStartPoint] = useState<THREE.Vector3 | null>(null);
@@ -258,7 +259,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   };
 
   const handleCanvasClick = (event: MouseEvent) => {
-    if (!sceneRef.current || !cameraRef.current || isDragging) return;
+    if (!sceneRef.current || !cameraRef.current || isDragging || isRotating) return;
 
     const rect = canvasRef.current!.getBoundingClientRect();
     const mouse = new THREE.Vector2();
@@ -484,45 +485,90 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       return;
     }
     
-    if (currentTool === 'move' && event.button === 0) {
-      const rect = canvasRef.current!.getBoundingClientRect();
-      const mouse = new THREE.Vector2();
-      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    if (currentTool === 'move') {
+      if (event.button === 0) {
+        // 左键：移动点位
+        const rect = canvasRef.current!.getBoundingClientRect();
+        const mouse = new THREE.Vector2();
+        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
-      raycasterRef.current!.setFromCamera(mouse, cameraRef.current!);
-      const intersects = raycasterRef.current!.intersectObjects(sceneRef.current!.children, true);
+        raycasterRef.current!.setFromCamera(mouse, cameraRef.current!);
+        const intersects = raycasterRef.current!.intersectObjects(sceneRef.current!.children, true);
 
-      for (const intersect of intersects) {
-        let obj = intersect.object;
-        while (obj) {
-          if (obj.userData.isTopoPoint && obj.userData.topoPoint) {
-            const point = obj.userData.topoPoint;
-            const mapManager = mapManagerRef.current;
-            const pointData = mapManager.getPoint(point.name);
-            if (pointData) {
-              event.preventDefault();
-              event.stopPropagation();
-              setSelectedPoint(pointData);
-              setIsDragging(true);
-              setDragStartPos(new THREE.Vector2(event.clientX, event.clientY));
-              dragStartPointRef.current = { ...pointData };
-              
-              // 禁用 controls
-              if (controlsRef.current) {
-                controlsRef.current.enablePan = false;
-              }
-              
-              // 找到对应的 group
-              sceneRef.current!.traverse((child) => {
-                if (child instanceof THREE.Group && child.name === point.name) {
-                  selectedPointRef.current = child;
+        for (const intersect of intersects) {
+          let obj = intersect.object;
+          while (obj) {
+            if (obj.userData.isTopoPoint && obj.userData.topoPoint) {
+              const point = obj.userData.topoPoint;
+              const mapManager = mapManagerRef.current;
+              const pointData = mapManager.getPoint(point.name);
+              if (pointData) {
+                event.preventDefault();
+                event.stopPropagation();
+                setSelectedPoint(pointData);
+                setIsDragging(true);
+                setDragStartPos(new THREE.Vector2(event.clientX, event.clientY));
+                dragStartPointRef.current = { ...pointData };
+                
+                // 禁用 controls
+                if (controlsRef.current) {
+                  controlsRef.current.enablePan = false;
                 }
-              });
+                
+                // 找到对应的 group
+                sceneRef.current!.traverse((child) => {
+                  if (child instanceof THREE.Group && child.name === point.name) {
+                    selectedPointRef.current = child;
+                  }
+                });
+              }
+              return;
             }
-            return;
+            obj = obj.parent as THREE.Object3D;
           }
-          obj = obj.parent as THREE.Object3D;
+        }
+      } else if (event.button === 2) {
+        // 右键：旋转点位方向
+        const rect = canvasRef.current!.getBoundingClientRect();
+        const mouse = new THREE.Vector2();
+        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycasterRef.current!.setFromCamera(mouse, cameraRef.current!);
+        const intersects = raycasterRef.current!.intersectObjects(sceneRef.current!.children, true);
+
+        for (const intersect of intersects) {
+          let obj = intersect.object;
+          while (obj) {
+            if (obj.userData.isTopoPoint && obj.userData.topoPoint) {
+              const point = obj.userData.topoPoint;
+              const mapManager = mapManagerRef.current;
+              const pointData = mapManager.getPoint(point.name);
+              if (pointData) {
+                event.preventDefault();
+                event.stopPropagation();
+                setSelectedPoint(pointData);
+                setIsRotating(true);
+                setDragStartPos(new THREE.Vector2(event.clientX, event.clientY));
+                dragStartPointRef.current = { ...pointData };
+                
+                // 禁用 controls
+                if (controlsRef.current) {
+                  controlsRef.current.enablePan = false;
+                }
+                
+                // 找到对应的 group
+                sceneRef.current!.traverse((child) => {
+                  if (child instanceof THREE.Group && child.name === point.name) {
+                    selectedPointRef.current = child;
+                  }
+                });
+              }
+              return;
+            }
+            obj = obj.parent as THREE.Object3D;
+          }
         }
       }
     }
@@ -605,38 +651,39 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       return;
     }
     
-    if (isDragging && selectedPoint && dragStartPos && selectedPointRef.current) {
+    if (isRotating && selectedPoint && dragStartPos && selectedPointRef.current) {
+      // 右键拖动：旋转点位方向
       event.preventDefault();
       event.stopPropagation();
       
-      if (event.shiftKey) {
-        // Shift + 拖动：调整方向
-        const worldPos = getWorldPosition(event);
-        if (worldPos && selectedPointRef.current) {
-          const dx = worldPos.x - selectedPoint.x;
-          const dy = worldPos.y - selectedPoint.y;
-          const theta = Math.atan2(dy, dx);
-          const updatedPoint: TopoPoint = {
-            ...selectedPoint,
-            theta: theta,
-          };
-          mapManagerRef.current.setPoint(updatedPoint);
-          setSelectedPoint(updatedPoint);
-          updateTopoMap();
-        }
-      } else {
-        // 普通拖动：移动位置
-        const worldPos = getWorldPosition(event);
-        if (worldPos) {
-          const updatedPoint: TopoPoint = {
-            ...selectedPoint,
-            x: worldPos.x,
-            y: worldPos.y,
-          };
-          mapManagerRef.current.setPoint(updatedPoint);
-          setSelectedPoint(updatedPoint);
-          updateTopoMap();
-        }
+      const worldPos = getWorldPosition(event);
+      if (worldPos && selectedPointRef.current) {
+        const dx = worldPos.x - selectedPoint.x;
+        const dy = worldPos.y - selectedPoint.y;
+        const theta = -Math.atan2(dy, dx);
+        const updatedPoint: TopoPoint = {
+          ...selectedPoint,
+          theta: theta,
+        };
+        mapManagerRef.current.setPoint(updatedPoint);
+        setSelectedPoint(updatedPoint);
+        updateTopoMap();
+      }
+    } else if (isDragging && selectedPoint && dragStartPos && selectedPointRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      
+      // 左键拖动：移动位置
+      const worldPos = getWorldPosition(event);
+      if (worldPos) {
+        const updatedPoint: TopoPoint = {
+          ...selectedPoint,
+          x: worldPos.x,
+          y: worldPos.y,
+        };
+        mapManagerRef.current.setPoint(updatedPoint);
+        setSelectedPoint(updatedPoint);
+        updateTopoMap();
       }
     } else if (currentTool === 'addRoute' && routeStartPoint) {
       // 更新预览线段（拓扑连线）
@@ -668,7 +715,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       lastDrawPosRef.current = null;
     }
     
-    if (isDragging && selectedPoint && dragStartPointRef.current) {
+    if ((isDragging || isRotating) && selectedPoint && dragStartPointRef.current) {
       const currentPoint = mapManagerRef.current.getPoint(selectedPoint.name);
       if (currentPoint && dragStartPointRef.current.name === currentPoint.name) {
         const command = new ModifyPointCommand(mapManagerRef.current, dragStartPointRef.current, currentPoint, updateTopoMap);
@@ -678,6 +725,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     }
     
     setIsDragging(false);
+    setIsRotating(false);
     setDragStartPos(null);
     selectedPointRef.current = null;
     
@@ -882,7 +930,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       canvas.removeEventListener('mousemove', mouseMoveHandler);
       canvas.removeEventListener('mouseup', mouseUpHandler);
     };
-  }, [currentTool, isDragging, selectedPoint, routeStartPoint, lineStartPoint, isDrawing, brushSize]);
+  }, [currentTool, isDragging, isRotating, selectedPoint, routeStartPoint, lineStartPoint, isDrawing, brushSize]);
 
   const handlePointPropertyChange = (field: keyof TopoPoint, value: string | number) => {
     if (!selectedPoint) return;
@@ -915,6 +963,48 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     const command = new ModifyRouteCommand(mapManagerRef.current, oldRoute, updatedRoute, updateTopoMap);
     commandManagerRef.current.executeCommand(command);
     setSelectedRoute(updatedRoute);
+  };
+
+  const handleAddRobotPosition = () => {
+    const tf2js = TF2JS.getInstance();
+    const mapFrame = 'map';
+    const baseFrame = 'base_center';
+    const transform = tf2js.findTransform(mapFrame, baseFrame);
+    
+    if (!transform) {
+      toast.error('无法获取机器人位置，请检查TF连接');
+      return;
+    }
+    
+    const robotEuler = new THREE.Euler();
+    robotEuler.setFromQuaternion(transform.rotation, 'XYZ');
+    const robotTheta = robotEuler.z;
+    
+    const mapManager = mapManagerRef.current;
+    const existingPoints = mapManager.getPoints();
+    let pointIndex = existingPoints.length;
+    let pointName = `NAV_POINT_${pointIndex}`;
+    while (existingPoints.some(p => p.name === pointName)) {
+      pointIndex++;
+      pointName = `NAV_POINT_${pointIndex}`;
+    }
+    
+    const newPoint: TopoPoint = {
+      name: pointName,
+      x: transform.translation.x,
+      y: transform.translation.y,
+      theta: robotTheta,
+      type: 0,
+    };
+    
+    const command = new AddPointCommand(mapManager, newPoint, updateTopoMap);
+    commandManagerRef.current.executeCommand(command);
+    setSelectedPoint(newPoint);
+    const topoLayer = layerManagerRef.current?.getLayer('topology');
+    if (topoLayer && 'setSelectedPoint' in topoLayer) {
+      (topoLayer as any).setSelectedPoint(newPoint);
+    }
+    toast.success(`已添加机器人当前位置为导航点: ${pointName}`);
   };
 
   return (
@@ -1048,6 +1138,28 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
             </label>
           </div>
         )}
+        {currentTool === 'addPoint' && (
+          <div style={{ padding: '10px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+            <button
+              onClick={handleAddRobotPosition}
+              type="button"
+              style={{
+                width: '100%',
+                padding: '8px 16px',
+                backgroundColor: '#2196F3',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: 'bold',
+              }}
+              title="将机器人当前位置添加为导航点位"
+            >
+              🤖 添加机器人当前位置
+            </button>
+          </div>
+        )}
         <div className="EditorCanvas">
           <canvas 
             ref={canvasRef} 
@@ -1058,6 +1170,11 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
             }`}
             onMouseMove={updateBrushIndicator}
             onMouseLeave={() => setMousePosition(null)}
+            onContextMenu={(e) => {
+              if (currentTool === 'move') {
+                e.preventDefault();
+              }
+            }}
           />
           {(currentTool === 'eraser' || currentTool === 'brush') && mousePosition && (
             <div
