@@ -105,8 +105,8 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     topic: '/map/topology',
     messageType: null,
     enabled: true,
-    color: 0x0080ff,
-    pointSize: 0.2,
+    color: 0x2196f3,
+    pointSize: 0.1,
   },
 };
 
@@ -140,6 +140,15 @@ export function MapView({ connection }: MapViewProps) {
     x: number;
     y: number;
     theta: number;
+  } | null>(null);
+  const [selectedTopoRoute, setSelectedTopoRoute] = useState<{
+    from_point: string;
+    to_point: string;
+    route_info: {
+      controller: string;
+      goal_checker: string;
+      speed_limit: number;
+    };
   } | null>(null);
   const raycasterRef = useRef<THREE.Raycaster | null>(null);
 
@@ -198,6 +207,23 @@ export function MapView({ connection }: MapViewProps) {
       for (const intersect of intersects) {
         let obj = intersect.object;
         while (obj) {
+          // 优先检测路线（因为路线在点下方）
+          if (obj.userData.isTopoRoute && obj.userData.topoRoute) {
+            const route = obj.userData.topoRoute;
+            setSelectedTopoRoute({
+              from_point: route.from_point,
+              to_point: route.to_point,
+              route_info: route.route_info,
+            });
+            setSelectedTopoPoint(null);
+            
+            // 更新 TopoLayer 的选中状态
+            const topoLayer = layerManagerRef.current?.getLayer('topo');
+            if (topoLayer && 'setSelectedRoute' in topoLayer) {
+              (topoLayer as any).setSelectedRoute(route);
+            }
+            return;
+          }
           if (obj.userData.isTopoPoint && obj.userData.topoPoint) {
             const point = obj.userData.topoPoint;
             setSelectedTopoPoint({
@@ -206,6 +232,13 @@ export function MapView({ connection }: MapViewProps) {
               y: point.y,
               theta: point.theta,
             });
+            setSelectedTopoRoute(null);
+            
+            // 清除 TopoLayer 的选中状态
+            const topoLayer = layerManagerRef.current?.getLayer('topo');
+            if (topoLayer && 'setSelectedRoute' in topoLayer) {
+              (topoLayer as any).setSelectedRoute(null);
+            }
             return;
           }
           obj = obj.parent as THREE.Object3D;
@@ -213,6 +246,13 @@ export function MapView({ connection }: MapViewProps) {
       }
       
       setSelectedTopoPoint(null);
+      setSelectedTopoRoute(null);
+      
+      // 清除 TopoLayer 的选中状态
+      const topoLayer = layerManagerRef.current?.getLayer('topo');
+      if (topoLayer && 'setSelectedRoute' in topoLayer) {
+        (topoLayer as any).setSelectedRoute(null);
+      }
     };
 
     canvas.addEventListener('click', handleClick);
@@ -501,6 +541,10 @@ export function MapView({ connection }: MapViewProps) {
         <LayerSettingsPanel
           layerConfigs={layerConfigs}
           onConfigChange={handleConfigChange}
+          onResetToDefaults={() => {
+            setLayerConfigs(DEFAULT_LAYER_CONFIGS);
+            saveLayerConfigs(DEFAULT_LAYER_CONFIGS);
+          }}
           onClose={() => setShowSettings(false)}
         />
       )}
@@ -510,7 +554,13 @@ export function MapView({ connection }: MapViewProps) {
             <h3>导航点信息</h3>
             <button
               className="CloseButton"
-              onClick={() => setSelectedTopoPoint(null)}
+              onClick={() => {
+                setSelectedTopoPoint(null);
+                const topoLayer = layerManagerRef.current?.getLayer('topo');
+                if (topoLayer && 'setSelectedRoute' in topoLayer) {
+                  (topoLayer as any).setSelectedRoute(null);
+                }
+              }}
               type="button"
             >
               ×
@@ -540,6 +590,48 @@ export function MapView({ connection }: MapViewProps) {
             >
               导航到此位置
             </button>
+          </div>
+        </div>
+      )}
+      {selectedTopoRoute && (
+        <div className="TopoPointInfoPanel">
+          <div className="TopoPointInfoHeader">
+            <h3>路线信息</h3>
+            <button
+              className="CloseButton"
+              onClick={() => {
+                setSelectedTopoRoute(null);
+                const topoLayer = layerManagerRef.current?.getLayer('topo');
+                if (topoLayer && 'setSelectedRoute' in topoLayer) {
+                  (topoLayer as any).setSelectedRoute(null);
+                }
+              }}
+              type="button"
+            >
+              ×
+            </button>
+          </div>
+          <div className="TopoPointInfoContent">
+            <div className="InfoRow">
+              <span className="InfoLabel">起点:</span>
+              <span className="InfoValue">{selectedTopoRoute.from_point}</span>
+            </div>
+            <div className="InfoRow">
+              <span className="InfoLabel">终点:</span>
+              <span className="InfoValue">{selectedTopoRoute.to_point}</span>
+            </div>
+            <div className="InfoRow">
+              <span className="InfoLabel">控制器:</span>
+              <span className="InfoValue">{selectedTopoRoute.route_info.controller || '-'}</span>
+            </div>
+            <div className="InfoRow">
+              <span className="InfoLabel">目标检查器:</span>
+              <span className="InfoValue">{selectedTopoRoute.route_info.goal_checker || '-'}</span>
+            </div>
+            <div className="InfoRow">
+              <span className="InfoLabel">速度限制:</span>
+              <span className="InfoValue">{selectedTopoRoute.route_info.speed_limit.toFixed(2)} m/s</span>
+            </div>
           </div>
         </div>
       )}

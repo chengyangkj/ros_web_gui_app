@@ -122,6 +122,10 @@ export class LayerManager {
     }
   }
 
+  getLayer(layerId: string): BaseLayer | undefined {
+    return this.layers.get(layerId);
+  }
+
   dispose(): void {
     for (const layerId of this.layers.keys()) {
       this.removeLayer(layerId);

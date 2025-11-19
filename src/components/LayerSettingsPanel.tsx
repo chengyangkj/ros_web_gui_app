@@ -6,10 +6,11 @@ import './LayerSettingsPanel.css';
 interface LayerSettingsPanelProps {
   layerConfigs: LayerConfigMap;
   onConfigChange: (layerId: string, config: Partial<import('../types/LayerConfig').LayerConfig>) => void;
+  onResetToDefaults: () => void;
   onClose: () => void;
 }
 
-export function LayerSettingsPanel({ layerConfigs, onConfigChange, onClose }: LayerSettingsPanelProps) {
+export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefaults, onClose }: LayerSettingsPanelProps) {
   const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set());
   const [editingFields, setEditingFields] = useState<Map<string, string>>(new Map());
 
@@ -50,9 +51,14 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onClose }: La
     <div className="LayerSettingsPanel">
       <div className="LayerSettingsPanelHeader">
         <h2>图层配置</h2>
-        <button className="CloseButton" onClick={onClose} type="button">
-          ×
-        </button>
+        <div className="HeaderButtons">
+          <button className="ResetButton" onClick={onResetToDefaults} type="button" title="恢复默认设置">
+            恢复默认
+          </button>
+          <button className="CloseButton" onClick={onClose} type="button">
+            ×
+          </button>
+        </div>
       </div>
       <div className="LayerSettingsPanelContent">
         {Object.entries(layerConfigs).map(([layerId, config]) => (

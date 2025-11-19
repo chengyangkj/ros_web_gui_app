@@ -21,6 +21,28 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.HeaderButtons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ResetButton {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.2s;
+}
+
+.ResetButton:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
 .LayerSettingsPanelHeader h2 {
   margin: 0;
   font-size: 20px;
