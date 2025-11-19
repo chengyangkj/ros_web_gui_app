@@ -78,14 +78,22 @@ export class RobotLayer extends BaseLayer {
       return;
     }
 
-    const transform = this.tf2js.findTransform(this.mapFrame, this.baseFrame);
+ 
+    const transform = this.tf2js.findTransform( this.mapFrame, this.baseFrame);
     if (transform) {
+      // The transform gives us base_center's position and orientation in map frame
       this.robotGroup.position.set(
         transform.translation.x,
         transform.translation.y,
         transform.translation.z
       );
       this.robotGroup.quaternion.copy(transform.rotation);
+    } else {
+      console.warn('[RobotLayer] Transform not found:', {
+        mapFrame: this.mapFrame,
+        baseFrame: this.baseFrame,
+        availableFrames: this.tf2js.getFrames()
+      });
     }
   }
 

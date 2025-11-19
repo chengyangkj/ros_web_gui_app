@@ -43,7 +43,7 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     messageType: null,
     enabled: true,
     visible: true,
-    baseFrame: 'base_link',
+    baseFrame: 'base_center',
     mapFrame: 'map',
   },
   local_plan: {

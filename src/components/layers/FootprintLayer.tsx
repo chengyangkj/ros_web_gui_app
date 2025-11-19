@@ -19,7 +19,7 @@ interface PolygonStamped {
 }
 
 export class FootprintLayer extends BaseLayer {
-  private mesh: THREE.Mesh | null = null;
+  private line: THREE.LineLoop | null = null;
 
   constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
@@ -36,11 +36,11 @@ export class FootprintLayer extends BaseLayer {
     const msg = message as PolygonStamped;
     
     if (!msg || !msg.polygon || !msg.polygon.points || !Array.isArray(msg.polygon.points) || msg.polygon.points.length === 0) {
-      if (this.mesh) {
-        this.scene.remove(this.mesh);
-        this.mesh.geometry.dispose();
-        (this.mesh.material as THREE.Material).dispose();
-        this.mesh = null;
+      if (this.line) {
+        this.scene.remove(this.line);
+        this.line.geometry.dispose();
+        (this.line.material as THREE.Material).dispose();
+        this.line = null;
         this.object3D = null;
       }
       return;
@@ -53,14 +53,13 @@ export class FootprintLayer extends BaseLayer {
       return;
     }
 
-    if (this.mesh) {
-      this.scene.remove(this.mesh);
-      this.mesh.geometry.dispose();
-      (this.mesh.material as THREE.Material).dispose();
+    if (this.line) {
+      this.scene.remove(this.line);
+      this.line.geometry.dispose();
+      (this.line.material as THREE.Material).dispose();
     }
 
     const vertices: number[] = [];
-    const indices: number[] = [];
 
     for (let i = 0; i < points.length; i++) {
       const point = points[i]!;
@@ -71,37 +70,31 @@ export class FootprintLayer extends BaseLayer {
       vertices.push(point.x, point.y, 0.002);
     }
 
-    for (let i = 1; i < points.length - 1; i++) {
-      indices.push(0, i, i + 1);
-    }
-
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    geometry.setIndex(indices);
-    geometry.computeVertexNormals();
 
-    const material = new THREE.MeshBasicMaterial({
+    const material = new THREE.LineBasicMaterial({
       color: 0xff0000,
-      side: THREE.DoubleSide,
+      linewidth: 2,
       transparent: true,
-      opacity: 0.5,
+      opacity: 0.8,
       depthTest: true,
       depthWrite: false,
     });
 
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.renderOrder = 1;
-    this.mesh = mesh;
-    this.object3D = mesh;
-    this.scene.add(mesh);
+    const line = new THREE.LineLoop(geometry, material);
+    line.renderOrder = 1;
+    this.line = line;
+    this.object3D = line;
+    this.scene.add(line);
   }
 
   dispose(): void {
-    if (this.mesh) {
-      this.scene.remove(this.mesh);
-      this.mesh.geometry.dispose();
-      (this.mesh.material as THREE.Material).dispose();
-      this.mesh = null;
+    if (this.line) {
+      this.scene.remove(this.line);
+      this.line.geometry.dispose();
+      (this.line.material as THREE.Material).dispose();
+      this.line = null;
     }
     super.dispose();
   }

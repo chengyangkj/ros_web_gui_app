@@ -233,23 +233,44 @@ export class TF2JS {
       current = current.parent;
     }
 
-    let resultTransform = new THREE.Matrix4().makeTranslation(0, 0, 0);
-    resultTransform.makeRotationFromQuaternion(new THREE.Quaternion(0, 0, 0, 1));
+    // Build transform from source to target
+    // Following suite-base's approach: GetTransformMatrix computes parent_T_child
+    // We need source_T_target, which is computed as:
+    // source -> commonAncestor -> target
+    // = (source -> commonAncestor) * (commonAncestor -> target)
+    // = (source -> commonAncestor) * inverse(target -> commonAncestor)
+    
+    // Start with identity matrix
+    let resultTransform = new THREE.Matrix4().identity();
 
+    // Step 1: Build transform from source to common ancestor
+    // Apply transforms from source upward to common ancestor
+    // Each transform is child_T_parent, so we multiply left-to-right
     for (const transform of sourceToCommon) {
       const matrix = new THREE.Matrix4();
       matrix.makeRotationFromQuaternion(transform.rotation);
       matrix.setPosition(transform.translation);
-      resultTransform.multiplyMatrices(resultTransform, matrix);
+      // Left multiply: result = matrix * result (like suite-base's mat4.multiply)
+      const temp = new THREE.Matrix4();
+      temp.multiplyMatrices(matrix, resultTransform);
+      resultTransform = temp;
     }
 
-    for (const transform of commonToTarget) {
+    // Step 2: Build transform from commonAncestor to target
+    // commonToTarget contains transforms from target -> parent -> ... -> commonAncestor
+    // We need commonAncestor -> target, so we invert each transform
+    // Then apply them in reverse order (from commonAncestor to target)
+    for (let i = commonToTarget.length - 1; i >= 0; i--) {
+      const transform = commonToTarget[i]!;
       const matrix = new THREE.Matrix4();
       matrix.makeRotationFromQuaternion(transform.rotation);
       matrix.setPosition(transform.translation);
       const inverse = new THREE.Matrix4();
       inverse.copy(matrix).invert();
-      resultTransform.multiplyMatrices(resultTransform, inverse);
+      // Left multiply: result = inverse * result
+      const temp = new THREE.Matrix4();
+      temp.multiplyMatrices(inverse, resultTransform);
+      resultTransform = temp;
     }
 
     const position = new THREE.Vector3();
