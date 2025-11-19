@@ -56,6 +56,7 @@ export class OccupancyGridLayer extends BaseLayer {
   private lastData: number[] | Int8Array | null = null;
   private lastWidth: number = 0;
   private lastHeight: number = 0;
+  private lastMessage: OccupancyGrid | null = null;
 
   constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
@@ -112,9 +113,12 @@ export class OccupancyGridLayer extends BaseLayer {
     }
 
     this.updateTexture(this.texture!, msg.data, width, height);
-    this.lastData = msg.data;
+    this.lastData = Array.isArray(msg.data) ? [...msg.data] : Array.from(msg.data);
     this.lastWidth = width;
     this.lastHeight = height;
+    const clonedMsg = JSON.parse(JSON.stringify(msg));
+    clonedMsg.data = Array.isArray(msg.data) ? [...msg.data] : Array.from(msg.data);
+    this.lastMessage = clonedMsg;
     
     const mapWidth = width * resolution;
     const mapHeight = height * resolution;
@@ -248,6 +252,127 @@ export class OccupancyGridLayer extends BaseLayer {
         this.updateTexture(this.texture, this.lastData, this.lastWidth, this.lastHeight);
       }
     }
+  }
+
+  modifyCell(worldX: number, worldY: number, value: number): boolean {
+    if (!this.lastMessage || !this.lastData || !this.mesh) {
+      return false;
+    }
+
+    const resolution = this.lastMessage.info.resolution;
+    const origin = this.lastMessage.info.origin;
+    const width = this.lastWidth;
+    const height = this.lastHeight;
+
+    const localX = worldX - origin.position.x;
+    const localY = worldY - origin.position.y;
+
+    const gridX = Math.floor(localX / resolution);
+    const gridY = Math.floor(localY / resolution);
+
+    if (gridX < 0 || gridX >= width || gridY < 0 || gridY >= height) {
+      return false;
+    }
+
+    const index = gridY * width + gridX;
+    if (index >= 0 && index < this.lastData.length) {
+      this.lastData[index] = value;
+      this.updateTexture(this.texture!, this.lastData, width, height);
+      
+      if (this.lastMessage) {
+        this.lastMessage.data = Array.isArray(this.lastData) ? [...this.lastData] : Array.from(this.lastData);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  modifyCells(worldPositions: Array<{ x: number; y: number }>, value: number, brushSize: number = 1): number {
+    if (!this.lastMessage || !this.lastData || !this.mesh) {
+      return 0;
+    }
+
+    const resolution = this.lastMessage.info.resolution;
+    const origin = this.lastMessage.info.origin;
+    const width = this.lastWidth;
+    const height = this.lastHeight;
+    let modifiedCount = 0;
+
+    for (const worldPos of worldPositions) {
+      const localX = worldPos.x - origin.position.x;
+      const localY = worldPos.y - origin.position.y;
+
+      const centerGridX = Math.floor(localX / resolution);
+      const centerGridY = Math.floor(localY / resolution);
+
+      const radius = Math.ceil(brushSize / resolution / 2);
+
+      for (let dy = -radius; dy <= radius; dy++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          const gridX = centerGridX + dx;
+          const gridY = centerGridY + dy;
+
+          if (gridX >= 0 && gridX < width && gridY >= 0 && gridY < height) {
+            const dist = Math.sqrt(dx * dx + dy * dy) * resolution;
+            if (dist <= brushSize / 2) {
+              const index = gridY * width + gridX;
+              if (index >= 0 && index < this.lastData.length) {
+                this.lastData[index] = value;
+                modifiedCount++;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    if (modifiedCount > 0) {
+      this.updateTexture(this.texture!, this.lastData, width, height);
+      if (this.lastMessage) {
+        this.lastMessage.data = Array.isArray(this.lastData) ? [...this.lastData] : Array.from(this.lastData);
+      }
+    }
+
+    return modifiedCount;
+  }
+
+  drawLine(startX: number, startY: number, endX: number, endY: number, value: number, lineWidth: number = 0.05): number {
+    if (!this.lastMessage || !this.lastData || !this.mesh) {
+      return 0;
+    }
+
+    const resolution = this.lastMessage.info.resolution;
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    
+    if (length === 0) {
+      return 0;
+    }
+
+    const stepSize = resolution / 2;
+    const steps = Math.ceil(length / stepSize);
+    const positions: Array<{ x: number; y: number }> = [];
+
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      positions.push({
+        x: startX + dx * t,
+        y: startY + dy * t,
+      });
+    }
+
+    return this.modifyCells(positions, value, lineWidth);
+  }
+
+  getMapMessage(): OccupancyGrid | null {
+    if (!this.lastMessage || !this.lastData) {
+      return null;
+    }
+    
+    const cloned = JSON.parse(JSON.stringify(this.lastMessage));
+    cloned.data = Array.isArray(this.lastData) ? [...this.lastData] : Array.from(this.lastData);
+    return cloned;
   }
 
   dispose(): void {

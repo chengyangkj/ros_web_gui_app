@@ -16,7 +16,7 @@ interface MapEditorProps {
   onClose: () => void;
 }
 
-type EditTool = 'move' | 'addPoint' | 'addRoute';
+type EditTool = 'move' | 'addPoint' | 'addRoute' | 'brush' | 'eraser' | 'drawLine';
 
 const DEFAULT_EDITOR_CONFIGS: LayerConfigMap = {
   occupancy_grid: {
@@ -47,12 +47,19 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   const controlsRef = useRef<OrbitControls | null>(null);
   const layerManagerRef = useRef<LayerManager | null>(null);
   const topoLayerRef = useRef<TopoLayer | null>(null);
+  const occupancyGridLayerRef = useRef<any>(null);
   const [currentTool, setCurrentTool] = useState<EditTool>('move');
+  const [brushSize, setBrushSize] = useState<number>(0.05);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [mousePosition, setMousePosition] = useState<{ x: number; y: number } | null>(null);
+  const lastDrawPosRef = useRef<THREE.Vector3 | null>(null);
+  const brushIndicatorRef = useRef<HTMLDivElement | null>(null);
   const [selectedPoint, setSelectedPoint] = useState<TopoPoint | null>(null);
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartPos, setDragStartPos] = useState<THREE.Vector2 | null>(null);
   const [routeStartPoint, setRouteStartPoint] = useState<string | null>(null);
+  const [lineStartPoint, setLineStartPoint] = useState<THREE.Vector3 | null>(null);
   const raycasterRef = useRef<THREE.Raycaster | null>(null);
   const mapManagerRef = useRef<TopologyMapManager>(TopologyMapManager.getInstance());
   const selectedPointRef = useRef<THREE.Group | null>(null);
@@ -113,6 +120,12 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     const topoLayer = layerManager.getLayer('topology') as TopoLayer | undefined;
     if (topoLayer) {
       topoLayerRef.current = topoLayer;
+    }
+    
+    // 获取 occupancy_grid layer 引用
+    const occupancyGridLayer = layerManager.getLayer('occupancy_grid');
+    if (occupancyGridLayer) {
+      occupancyGridLayerRef.current = occupancyGridLayer;
     }
 
     const handleResize = () => {
@@ -185,6 +198,11 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
             // 同步 MapManager 的数据到图层
             updateTopoMap();
           }
+          
+          const occupancyGridLayer = layerManagerRef.current?.getLayer('occupancy_grid');
+          if (occupancyGridLayer) {
+            occupancyGridLayerRef.current = occupancyGridLayer;
+          }
         }, 500);
         
         return () => {
@@ -235,6 +253,32 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     raycasterRef.current!.setFromCamera(mouse, cameraRef.current);
     const intersects = raycasterRef.current!.intersectObjects(sceneRef.current.children, true);
 
+    if (currentTool === 'drawLine') {
+      // 直线绘制工具：点击空白区域设置起始点和结束点
+      const worldPos = getWorldPosition(event);
+      if (!worldPos || !occupancyGridLayerRef.current) return;
+      
+      if (!lineStartPoint) {
+        setLineStartPoint(worldPos);
+        createPreviewLine(worldPos.x, worldPos.y, worldPos.x, worldPos.y);
+        toast.info('已设置起始点，点击设置结束点');
+      } else {
+        const endPos = worldPos;
+        occupancyGridLayerRef.current.drawLine(
+          lineStartPoint.x,
+          lineStartPoint.y,
+          endPos.x,
+          endPos.y,
+          100,
+          brushSize
+        );
+        clearPreviewLine();
+        setLineStartPoint(null);
+        toast.success('已绘制直线');
+      }
+      return;
+    }
+
     if (currentTool === 'addRoute') {
       // 连线工具：优先处理点位点击进行连线
       for (const intersect of intersects) {
@@ -245,7 +289,11 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
             if (!routeStartPoint) {
               setRouteStartPoint(point.name);
               // 创建预览线段
-              createPreviewLine(point.name);
+              const mapManager = mapManagerRef.current;
+              const startPoint = mapManager.getPoint(point.name);
+              if (startPoint) {
+                createPreviewLine(startPoint.x, startPoint.y, startPoint.x, startPoint.y);
+              }
             } else if (routeStartPoint !== point.name) {
               // 检查是否已存在相同方向的路线（A->B 和 B->A 是不同的路线）
               const mapManager = mapManagerRef.current;
@@ -385,6 +433,24 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   };
 
   const handleCanvasMouseDown = (event: MouseEvent) => {
+    if ((currentTool === 'brush' || currentTool === 'eraser') && event.button === 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      const worldPos = getWorldPosition(event);
+      if (worldPos && occupancyGridLayerRef.current) {
+        setIsDrawing(true);
+        lastDrawPosRef.current = worldPos;
+        const value = currentTool === 'brush' ? 100 : 0;
+        occupancyGridLayerRef.current.modifyCells([{ x: worldPos.x, y: worldPos.y }], value, brushSize);
+        
+        // 禁用 controls
+        if (controlsRef.current) {
+          controlsRef.current.enablePan = false;
+        }
+      }
+      return;
+    }
+    
     if (currentTool === 'move' && event.button === 0) {
       const rect = canvasRef.current!.getBoundingClientRect();
       const mouse = new THREE.Vector2();
@@ -428,7 +494,70 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     }
   };
 
+  const updateBrushIndicatorFromNative = (event: MouseEvent) => {
+    if ((currentTool === 'eraser' || currentTool === 'brush') && canvasRef.current && cameraRef.current) {
+      const rect = canvasRef.current.getBoundingClientRect();
+      setMousePosition({
+        x: event.clientX - rect.left,
+        y: event.clientY - rect.top,
+      });
+    } else {
+      setMousePosition(null);
+    }
+  };
+
+  const updateBrushIndicator = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    updateBrushIndicatorFromNative(event.nativeEvent);
+  };
+
+  const getBrushIndicatorSize = (): number => {
+    if (!cameraRef.current || !canvasRef.current) return 0;
+    
+    const camera = cameraRef.current;
+    const canvas = canvasRef.current;
+    const distance = camera.position.z;
+    const fov = camera.fov * (Math.PI / 180);
+    const canvasHeight = canvas.clientHeight;
+    const worldHeight = 2 * Math.tan(fov / 2) * distance;
+    const pixelsPerMeter = canvasHeight / worldHeight;
+    
+    return brushSize * pixelsPerMeter;
+  };
+
   const handleCanvasMouseMove = (event: MouseEvent) => {
+    updateBrushIndicatorFromNative(event);
+    
+    if (isDrawing && (currentTool === 'brush' || currentTool === 'eraser') && occupancyGridLayerRef.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      const worldPos = getWorldPosition(event);
+      if (worldPos) {
+        const value = currentTool === 'brush' ? 100 : 0;
+        const positions: Array<{ x: number; y: number }> = [];
+        
+        if (lastDrawPosRef.current) {
+          const dx = worldPos.x - lastDrawPosRef.current.x;
+          const dy = worldPos.y - lastDrawPosRef.current.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const steps = Math.max(1, Math.ceil(dist / (brushSize / 4)));
+          
+          for (let i = 0; i <= steps; i++) {
+            const t = i / steps;
+            positions.push({
+              x: lastDrawPosRef.current.x + dx * t,
+              y: lastDrawPosRef.current.y + dy * t,
+            });
+          }
+        } else {
+          positions.push({ x: worldPos.x, y: worldPos.y });
+        }
+        
+        occupancyGridLayerRef.current.modifyCells(positions, value, brushSize);
+        lastDrawPosRef.current = worldPos;
+      }
+      return;
+    }
+    
     if (isDragging && selectedPoint && dragStartPos && selectedPointRef.current) {
       event.preventDefault();
       event.stopPropagation();
@@ -463,12 +592,20 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         }
       }
     } else if (currentTool === 'addRoute' && routeStartPoint) {
-      // 更新预览线段
+      // 更新预览线段（拓扑连线）
+      updatePreviewLine(event);
+    } else if (currentTool === 'drawLine' && lineStartPoint) {
+      // 更新预览线段（直线绘制）
       updatePreviewLine(event);
     }
   };
 
   const handleCanvasMouseUp = () => {
+    if (isDrawing) {
+      setIsDrawing(false);
+      lastDrawPosRef.current = null;
+    }
+    
     setIsDragging(false);
     setDragStartPos(null);
     selectedPointRef.current = null;
@@ -479,28 +616,26 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     }
   };
 
-  const createPreviewLine = (startPointName: string) => {
+  const createPreviewLine = (startX: number, startY: number, endX: number, endY: number) => {
     if (!sceneRef.current) return;
-    
-    const mapManager = mapManagerRef.current;
-    const startPoint = mapManager.getPoint(startPointName);
-    if (!startPoint) return;
     
     clearPreviewLine();
     
     const geometry = new THREE.BufferGeometry();
+    const pointHeight = 0.2 * 2;
+    const lineZ = 0.002 + pointHeight / 2;
     const positions = new Float32Array([
-      startPoint.x,
-      startPoint.y,
-      0.002,
-      startPoint.x,
-      startPoint.y,
-      0.002,
+      startX,
+      startY,
+      lineZ,
+      endX,
+      endY,
+      lineZ,
     ]);
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     
     const material = new THREE.LineBasicMaterial({
-      color: 0x00ff00,
+      color: currentTool === 'drawLine' ? 0x2196f3 : 0x00ff00,
       linewidth: 2,
       transparent: true,
       opacity: 0.6,
@@ -513,29 +648,57 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   };
 
   const updatePreviewLine = (event: MouseEvent) => {
-    if (!previewLineRef.current || !routeStartPoint || !sceneRef.current) return;
+    if (!sceneRef.current) return;
     
-    const mapManager = mapManagerRef.current;
-    const startPoint = mapManager.getPoint(routeStartPoint);
-    if (!startPoint) return;
-    
-    const worldPos = getWorldPosition(event);
-    if (!worldPos) return;
-    
-    const geometry = previewLineRef.current.geometry as THREE.BufferGeometry;
-    const positions = geometry.attributes.position.array as Float32Array;
-    
-    const pointHeight = 0.2 * 2; // 使用默认 pointSize 0.2
-    const lineZ = 0.002 + pointHeight / 2;
-    
-    positions[0] = startPoint.x;
-    positions[1] = startPoint.y;
-    positions[2] = lineZ;
-    positions[3] = worldPos.x;
-    positions[4] = worldPos.y;
-    positions[5] = lineZ;
-    
-    geometry.attributes.position.needsUpdate = true;
+    if (currentTool === 'drawLine' && lineStartPoint) {
+      const worldPos = getWorldPosition(event);
+      if (!worldPos) return;
+      
+      if (!previewLineRef.current) {
+        createPreviewLine(lineStartPoint.x, lineStartPoint.y, worldPos.x, worldPos.y);
+        return;
+      }
+      
+      const geometry = previewLineRef.current.geometry as THREE.BufferGeometry;
+      const positions = geometry.attributes.position.array as Float32Array;
+      const pointHeight = 0.2 * 2;
+      const lineZ = 0.002 + pointHeight / 2;
+      
+      positions[0] = lineStartPoint.x;
+      positions[1] = lineStartPoint.y;
+      positions[2] = lineZ;
+      positions[3] = worldPos.x;
+      positions[4] = worldPos.y;
+      positions[5] = lineZ;
+      
+      geometry.attributes.position.needsUpdate = true;
+    } else if (currentTool === 'addRoute' && routeStartPoint) {
+      const mapManager = mapManagerRef.current;
+      const startPoint = mapManager.getPoint(routeStartPoint);
+      if (!startPoint) return;
+      
+      const worldPos = getWorldPosition(event);
+      if (!worldPos) return;
+      
+      if (!previewLineRef.current) {
+        createPreviewLine(startPoint.x, startPoint.y, worldPos.x, worldPos.y);
+        return;
+      }
+      
+      const geometry = previewLineRef.current.geometry as THREE.BufferGeometry;
+      const positions = geometry.attributes.position.array as Float32Array;
+      const pointHeight = 0.2 * 2;
+      const lineZ = 0.002 + pointHeight / 2;
+      
+      positions[0] = startPoint.x;
+      positions[1] = startPoint.y;
+      positions[2] = lineZ;
+      positions[3] = worldPos.x;
+      positions[4] = worldPos.y;
+      positions[5] = lineZ;
+      
+      geometry.attributes.position.needsUpdate = true;
+    }
   };
 
   const clearPreviewLine = () => {
@@ -578,6 +741,24 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       mapManager.save();
       toast.warning('保存成功，但发布失败');
     }
+    
+    if (occupancyGridLayerRef.current && connection.isConnected()) {
+      const mapMessage = occupancyGridLayerRef.current.getMapMessage();
+      if (mapMessage) {
+        const now = Date.now();
+        mapMessage.header.stamp = {
+          sec: Math.floor(now / 1000),
+          nsec: (now % 1000) * 1000000,
+        };
+        try {
+          connection.publish('/map/update', 'nav_msgs/OccupancyGrid', mapMessage);
+          toast.success('栅格地图已发布到 /map/update');
+        } catch (error) {
+          console.error('Failed to publish occupancy grid:', error);
+          toast.warning('栅格地图发布失败');
+        }
+      }
+    }
   };
 
   useEffect(() => {
@@ -608,7 +789,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       canvas.removeEventListener('mousemove', mouseMoveHandler);
       canvas.removeEventListener('mouseup', mouseUpHandler);
     };
-  }, [currentTool, isDragging, selectedPoint, routeStartPoint]);
+  }, [currentTool, isDragging, selectedPoint, routeStartPoint, lineStartPoint, isDrawing, brushSize]);
 
   const handlePointPropertyChange = (field: keyof TopoPoint, value: string | number) => {
     if (!selectedPoint) return;
@@ -675,7 +856,9 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
             onClick={() => {
               setCurrentTool('move');
               setRouteStartPoint(null);
+              setLineStartPoint(null);
               clearPreviewLine();
+              setMousePosition(null);
             }}
             type="button"
             title="移动工具"
@@ -687,7 +870,9 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
             onClick={() => {
               setCurrentTool('addPoint');
               setRouteStartPoint(null);
+              setLineStartPoint(null);
               clearPreviewLine();
+              setMousePosition(null);
             }}
             type="button"
             title="添加拓扑点位"
@@ -699,16 +884,100 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
             onClick={() => {
               setCurrentTool('addRoute');
               setRouteStartPoint(null);
+              setLineStartPoint(null);
               clearPreviewLine();
+              setMousePosition(null);
             }}
             type="button"
             title="拓扑连线"
           >
             🔗 连线
           </button>
+          <button
+            className={`ToolButton ${currentTool === 'brush' ? 'active' : ''}`}
+            onClick={() => {
+              setCurrentTool('brush');
+              setRouteStartPoint(null);
+              setLineStartPoint(null);
+              clearPreviewLine();
+              setMousePosition(null);
+            }}
+            type="button"
+            title="绘制障碍物"
+          >
+            🖌️ 画笔
+          </button>
+          <button
+            className={`ToolButton ${currentTool === 'eraser' ? 'active' : ''}`}
+            onClick={() => {
+              setCurrentTool('eraser');
+              setRouteStartPoint(null);
+              setLineStartPoint(null);
+              clearPreviewLine();
+              setMousePosition(null);
+            }}
+            type="button"
+            title="擦除障碍物"
+          >
+            🧹 橡皮擦
+          </button>
+          <button
+            className={`ToolButton ${currentTool === 'drawLine' ? 'active' : ''}`}
+            onClick={() => {
+              setCurrentTool('drawLine');
+              setRouteStartPoint(null);
+              setLineStartPoint(null);
+              clearPreviewLine();
+              setMousePosition(null);
+            }}
+            type="button"
+            title="直线绘制"
+          >
+            📏 直线
+          </button>
         </div>
+        {(currentTool === 'brush' || currentTool === 'eraser' || currentTool === 'drawLine') && (
+          <div style={{ padding: '10px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px' }}>
+              <span>画笔大小:</span>
+              <input
+                type="range"
+                min="0.05"
+                max="1"
+                step="0.05"
+                value={brushSize}
+                onChange={(e) => setBrushSize(parseFloat(e.target.value))}
+                style={{ flex: 1 }}
+              />
+              <span style={{ minWidth: '40px', textAlign: 'right' }}>{brushSize.toFixed(2)}m</span>
+            </label>
+          </div>
+        )}
         <div className="EditorCanvas">
-          <canvas ref={canvasRef} className="EditorMapCanvas" />
+          <canvas 
+            ref={canvasRef} 
+            className={`EditorMapCanvas ${
+              currentTool === 'brush' ? 'cursor-brush' : 
+              currentTool === 'eraser' ? 'cursor-eraser' : 
+              ''
+            }`}
+            onMouseMove={updateBrushIndicator}
+            onMouseLeave={() => setMousePosition(null)}
+          />
+          {(currentTool === 'eraser' || currentTool === 'brush') && mousePosition && (
+            <div
+              ref={brushIndicatorRef}
+              className={`BrushIndicator ${currentTool === 'brush' ? 'BrushIndicator-brush' : 'BrushIndicator-eraser'}`}
+              style={{
+                left: `${mousePosition.x}px`,
+                top: `${mousePosition.y}px`,
+                width: `${getBrushIndicatorSize()}px`,
+                height: `${getBrushIndicatorSize()}px`,
+                marginLeft: `-${getBrushIndicatorSize() / 2}px`,
+                marginTop: `-${getBrushIndicatorSize() / 2}px`,
+              }}
+            />
+          )}
         </div>
         <div className="PropertyPanel">
           {selectedPoint && (
