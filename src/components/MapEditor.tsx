@@ -9,6 +9,17 @@ import type { LayerConfigMap } from '../types/LayerConfig';
 import { TopoLayer } from './layers/TopoLayer';
 import { TopologyMapManager } from '../utils/TopologyMapManager';
 import type { TopoPoint, Route, RouteInfo, TopologyMap } from '../utils/TopologyMapManager';
+import {
+  CommandManager,
+  AddPointCommand,
+  DeletePointCommand,
+  ModifyPointCommand,
+  AddRouteCommand,
+  DeleteRouteCommand,
+  ModifyRouteCommand,
+  ModifyGridCommand,
+  type GridCellChange,
+} from '../utils/CommandManager';
 import './MapEditor.css';
 
 interface MapEditorProps {
@@ -62,10 +73,14 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   const [lineStartPoint, setLineStartPoint] = useState<THREE.Vector3 | null>(null);
   const raycasterRef = useRef<THREE.Raycaster | null>(null);
   const mapManagerRef = useRef<TopologyMapManager>(TopologyMapManager.getInstance());
+  const commandManagerRef = useRef<CommandManager>(new CommandManager());
   const selectedPointRef = useRef<THREE.Group | null>(null);
   const previewLineRef = useRef<THREE.Line | null>(null);
   const selectedPointStateRef = useRef<TopoPoint | null>(null);
   const selectedRouteStateRef = useRef<Route | null>(null);
+  const currentGridChangesRef = useRef<Map<number, { oldValue: number; newValue: number }>>(new Map());
+  const initialGridValuesRef = useRef<Map<number, number>>(new Map());
+  const dragStartPointRef = useRef<TopoPoint | null>(null);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -264,7 +279,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         toast.info('已设置起始点，点击设置结束点');
       } else {
         const endPos = worldPos;
-        occupancyGridLayerRef.current.drawLine(
+        const changes = occupancyGridLayerRef.current.drawLine(
           lineStartPoint.x,
           lineStartPoint.y,
           endPos.x,
@@ -272,6 +287,16 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
           100,
           brushSize
         );
+        
+        if (changes.length > 0) {
+          const command = new ModifyGridCommand(
+            occupancyGridLayerRef.current,
+            changes,
+            () => {}
+          );
+          commandManagerRef.current.executeCommand(command);
+        }
+        
         clearPreviewLine();
         setLineStartPoint(null);
         toast.success('已绘制直线');
@@ -311,8 +336,8 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
                     speed_limit: 1.0,
                   },
                 };
-                mapManager.setRoute(newRoute);
-                updateTopoMap();
+                const command = new AddRouteCommand(mapManager, newRoute, updateTopoMap);
+                commandManagerRef.current.executeCommand(command);
                 setRouteStartPoint(null);
                 setSelectedRoute(newRoute);
                 setSelectedPoint(null);
@@ -421,8 +446,8 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         theta: 0,
         type: 0,
       };
-      mapManager.setPoint(newPoint);
-      updateTopoMap();
+      const command = new AddPointCommand(mapManager, newPoint, updateTopoMap);
+      commandManagerRef.current.executeCommand(command);
       setSelectedPoint(newPoint);
       const topoLayer = layerManagerRef.current?.getLayer('topology');
       if (topoLayer && 'setSelectedPoint' in topoLayer) {
@@ -440,8 +465,16 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       if (worldPos && occupancyGridLayerRef.current) {
         setIsDrawing(true);
         lastDrawPosRef.current = worldPos;
+        currentGridChangesRef.current.clear();
+        initialGridValuesRef.current.clear();
+        
         const value = currentTool === 'brush' ? 100 : 0;
-        occupancyGridLayerRef.current.modifyCells([{ x: worldPos.x, y: worldPos.y }], value, brushSize);
+        const changes = occupancyGridLayerRef.current.modifyCells([{ x: worldPos.x, y: worldPos.y }], value, brushSize);
+        
+        for (const change of changes) {
+          initialGridValuesRef.current.set(change.index, change.oldValue);
+          currentGridChangesRef.current.set(change.index, { oldValue: change.oldValue, newValue: change.newValue });
+        }
         
         // 禁用 controls
         if (controlsRef.current) {
@@ -473,6 +506,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
               setSelectedPoint(pointData);
               setIsDragging(true);
               setDragStartPos(new THREE.Vector2(event.clientX, event.clientY));
+              dragStartPointRef.current = { ...pointData };
               
               // 禁用 controls
               if (controlsRef.current) {
@@ -552,7 +586,20 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
           positions.push({ x: worldPos.x, y: worldPos.y });
         }
         
-        occupancyGridLayerRef.current.modifyCells(positions, value, brushSize);
+        const changes = occupancyGridLayerRef.current.modifyCells(positions, value, brushSize, initialGridValuesRef.current);
+        
+        for (const change of changes) {
+          if (!currentGridChangesRef.current.has(change.index)) {
+            if (!initialGridValuesRef.current.has(change.index)) {
+              initialGridValuesRef.current.set(change.index, change.oldValue);
+            }
+            currentGridChangesRef.current.set(change.index, { oldValue: change.oldValue, newValue: change.newValue });
+          } else {
+            const existing = currentGridChangesRef.current.get(change.index)!;
+            existing.newValue = change.newValue;
+          }
+        }
+        
         lastDrawPosRef.current = worldPos;
       }
       return;
@@ -601,9 +648,33 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   };
 
   const handleCanvasMouseUp = () => {
-    if (isDrawing) {
+    if (isDrawing && (currentTool === 'brush' || currentTool === 'eraser')) {
+      if (currentGridChangesRef.current.size > 0) {
+        const changes: GridCellChange[] = Array.from(currentGridChangesRef.current.entries()).map(([index, values]) => ({
+          index,
+          oldValue: values.oldValue,
+          newValue: values.newValue,
+        }));
+        
+        const command = new ModifyGridCommand(
+          occupancyGridLayerRef.current,
+          changes,
+          () => {}
+        );
+        commandManagerRef.current.executeCommand(command);
+        currentGridChangesRef.current.clear();
+      }
       setIsDrawing(false);
       lastDrawPosRef.current = null;
+    }
+    
+    if (isDragging && selectedPoint && dragStartPointRef.current) {
+      const currentPoint = mapManagerRef.current.getPoint(selectedPoint.name);
+      if (currentPoint && dragStartPointRef.current.name === currentPoint.name) {
+        const command = new ModifyPointCommand(mapManagerRef.current, dragStartPointRef.current, currentPoint, updateTopoMap);
+        commandManagerRef.current.executeCommand(command);
+      }
+      dragStartPointRef.current = null;
     }
     
     setIsDragging(false);
@@ -770,6 +841,28 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   }, [selectedRoute]);
 
   useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) {
+          if (commandManagerRef.current.redo()) {
+            toast.success('重做');
+          }
+        } else {
+          if (commandManagerRef.current.undo()) {
+            toast.success('撤销');
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -794,22 +887,24 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   const handlePointPropertyChange = (field: keyof TopoPoint, value: string | number) => {
     if (!selectedPoint) return;
     
+    const oldPoint = { ...selectedPoint };
     const updatedPoint: TopoPoint = {
       ...selectedPoint,
       [field]: value,
     };
-    mapManagerRef.current.setPoint(updatedPoint);
+    const command = new ModifyPointCommand(mapManagerRef.current, oldPoint, updatedPoint, updateTopoMap);
+    commandManagerRef.current.executeCommand(command);
     setSelectedPoint(updatedPoint);
     const topoLayer = layerManagerRef.current?.getLayer('topology');
     if (topoLayer && 'setSelectedPoint' in topoLayer) {
       (topoLayer as any).setSelectedPoint(updatedPoint);
     }
-    updateTopoMap();
   };
 
   const handleRoutePropertyChange = (field: keyof RouteInfo, value: string | number) => {
     if (!selectedRoute) return;
     
+    const oldRoute = { ...selectedRoute };
     const updatedRoute: Route = {
       ...selectedRoute,
       route_info: {
@@ -817,9 +912,9 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         [field]: value,
       },
     };
-    mapManagerRef.current.setRoute(updatedRoute);
+    const command = new ModifyRouteCommand(mapManagerRef.current, oldRoute, updatedRoute, updateTopoMap);
+    commandManagerRef.current.executeCommand(command);
     setSelectedRoute(updatedRoute);
-    updateTopoMap();
   };
 
   return (
@@ -1021,13 +1116,13 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
               <button
                 className="DeleteButton"
                 onClick={() => {
-                  mapManagerRef.current.deletePoint(selectedPoint.name);
+                  const command = new DeletePointCommand(mapManagerRef.current, selectedPoint, updateTopoMap);
+                  commandManagerRef.current.executeCommand(command);
                   setSelectedPoint(null);
                   const topoLayer = layerManagerRef.current?.getLayer('topology');
                   if (topoLayer && 'setSelectedPoint' in topoLayer) {
                     (topoLayer as any).setSelectedPoint(null);
                   }
-                  updateTopoMap();
                   toast.success(`已删除点位: ${selectedPoint.name}`);
                 }}
                 type="button"
@@ -1075,13 +1170,13 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
               <button
                 className="DeleteButton"
                 onClick={() => {
-                  mapManagerRef.current.deleteRoute(selectedRoute);
+                  const command = new DeleteRouteCommand(mapManagerRef.current, selectedRoute, updateTopoMap);
+                  commandManagerRef.current.executeCommand(command);
                   setSelectedRoute(null);
                   const topoLayer = layerManagerRef.current?.getLayer('topology');
                   if (topoLayer && 'setSelectedRoute' in topoLayer) {
                     (topoLayer as any).setSelectedRoute(null);
                   }
-                  updateTopoMap();
                   toast.success(`已删除路线: ${selectedRoute.from_point} -> ${selectedRoute.to_point}`);
                 }}
                 type="button"

@@ -173,7 +173,7 @@ export class OccupancyGridLayer extends BaseLayer {
     });
   }
 
-  private updateTexture(texture: THREE.DataTexture, data: number[] | Int8Array, width: number, height: number): void {
+  updateTexture(texture: THREE.DataTexture, data: number[] | Int8Array, width: number, height: number): void {
     const size = width * height;
     const rgba = texture.image.data as Uint8ClampedArray;
 
@@ -287,16 +287,17 @@ export class OccupancyGridLayer extends BaseLayer {
     return false;
   }
 
-  modifyCells(worldPositions: Array<{ x: number; y: number }>, value: number, brushSize: number = 1): number {
+  modifyCells(worldPositions: Array<{ x: number; y: number }>, value: number, brushSize: number = 1, initialValues?: Map<number, number>): Array<{ index: number; oldValue: number; newValue: number }> {
     if (!this.lastMessage || !this.lastData || !this.mesh) {
-      return 0;
+      return [];
     }
 
     const resolution = this.lastMessage.info.resolution;
     const origin = this.lastMessage.info.origin;
     const width = this.lastWidth;
     const height = this.lastHeight;
-    let modifiedCount = 0;
+    const changes: Array<{ index: number; oldValue: number; newValue: number }> = [];
+    const modifiedIndices = new Set<number>();
 
     for (const worldPos of worldPositions) {
       const localX = worldPos.x - origin.position.x;
@@ -316,9 +317,11 @@ export class OccupancyGridLayer extends BaseLayer {
             const dist = Math.sqrt(dx * dx + dy * dy) * resolution;
             if (dist <= brushSize / 2) {
               const index = gridY * width + gridX;
-              if (index >= 0 && index < this.lastData.length) {
+              if (index >= 0 && index < this.lastData.length && !modifiedIndices.has(index)) {
+                modifiedIndices.add(index);
+                const oldValue = initialValues?.has(index) ? initialValues.get(index)! : this.lastData[index];
+                changes.push({ index, oldValue, newValue: value });
                 this.lastData[index] = value;
-                modifiedCount++;
               }
             }
           }
@@ -326,19 +329,19 @@ export class OccupancyGridLayer extends BaseLayer {
       }
     }
 
-    if (modifiedCount > 0) {
+    if (changes.length > 0) {
       this.updateTexture(this.texture!, this.lastData, width, height);
       if (this.lastMessage) {
         this.lastMessage.data = Array.isArray(this.lastData) ? [...this.lastData] : Array.from(this.lastData);
       }
     }
 
-    return modifiedCount;
+    return changes;
   }
 
-  drawLine(startX: number, startY: number, endX: number, endY: number, value: number, lineWidth: number = 0.05): number {
+  drawLine(startX: number, startY: number, endX: number, endY: number, value: number, lineWidth: number = 0.05): Array<{ index: number; oldValue: number; newValue: number }> {
     if (!this.lastMessage || !this.lastData || !this.mesh) {
-      return 0;
+      return [];
     }
 
     const resolution = this.lastMessage.info.resolution;
@@ -347,7 +350,7 @@ export class OccupancyGridLayer extends BaseLayer {
     const length = Math.sqrt(dx * dx + dy * dy);
     
     if (length === 0) {
-      return 0;
+      return [];
     }
 
     const stepSize = resolution / 2;
