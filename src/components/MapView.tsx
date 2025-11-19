@@ -114,6 +114,9 @@ export function MapView({ connection }: MapViewProps) {
     controls.minDistance = 1;
     controls.maxDistance = 1000;
     controls.target.set(0, 0, 0);
+    controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+    controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+    (controls as any).zoomToCursor = true;
     
     controls.update();
     
@@ -262,8 +265,11 @@ export function MapView({ connection }: MapViewProps) {
       controls.enableRotate = false;
       controls.enableZoom = true;
       controls.enablePan = true;
-      controls.screenSpacePanning = false;
+      controls.screenSpacePanning = true;
       controls.enableDamping = true;
+      controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+      controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+      (controls as any).zoomToCursor = true;
       
       const targetZ = 0;
       const distance = Math.max(Math.abs(camera.position.z - targetZ), 0.1);
@@ -279,9 +285,13 @@ export function MapView({ connection }: MapViewProps) {
       controls.enableRotate = true;
       controls.enableZoom = true;
       controls.enablePan = true;
+      controls.screenSpacePanning = false;
       controls.maxPolarAngle = Math.PI;
       controls.minPolarAngle = 0;
       controls.enableDamping = true;
+      controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+      controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+      (controls as any).zoomToCursor = true;
       camera.up.set(0, 0, 1);
       controls.update();
     }
