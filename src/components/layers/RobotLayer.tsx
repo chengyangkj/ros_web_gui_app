@@ -11,7 +11,7 @@ export class RobotLayer extends BaseLayer {
   private mapFrame: string;
   private transformChangeUnsubscribe: (() => void) | null = null;
   private updateInterval: ReturnType<typeof setInterval> | null = null;
-  private sprite: THREE.Sprite | null = null;
+  private iconMesh: THREE.Mesh | null = null;
 
   constructor(scene: THREE.Scene, config: LayerConfig) {
     super(scene, config);
@@ -50,17 +50,19 @@ export class RobotLayer extends BaseLayer {
     robotGroup.add(arrowHelper);
 
     const texture = this.createSVGTexture();
-    const spriteMaterial = new THREE.SpriteMaterial({
+    const geometry = new THREE.PlaneGeometry(0.2, 0.2);
+    const material = new THREE.MeshBasicMaterial({
       map: texture,
       transparent: true,
-      depthTest: false,
+      depthTest: true,
       depthWrite: false,
+      side: THREE.DoubleSide,
     });
-    const sprite = new THREE.Sprite(spriteMaterial);
-    sprite.scale.set(0.2, 0.2, 1);
-    sprite.position.set(0, 0, 0);
-    this.sprite = sprite;
-    robotGroup.add(sprite);
+    const iconMesh = new THREE.Mesh(geometry, material);
+    iconMesh.position.set(0, 0, 0);
+    iconMesh.rotation.set(0, 0, Math.PI / 4);
+    this.iconMesh = iconMesh;
+    robotGroup.add(iconMesh);
 
     this.robotGroup = robotGroup;
     this.object3D = robotGroup;
@@ -108,9 +110,18 @@ export class RobotLayer extends BaseLayer {
       this.transformChangeUnsubscribe();
       this.transformChangeUnsubscribe = null;
     }
-    if (this.sprite && this.sprite.material) {
-      (this.sprite.material as THREE.SpriteMaterial).map?.dispose();
-      this.sprite.material.dispose();
+    if (this.iconMesh) {
+      if (this.iconMesh.geometry) {
+        this.iconMesh.geometry.dispose();
+      }
+      if (this.iconMesh.material) {
+        const material = this.iconMesh.material as THREE.MeshBasicMaterial;
+        if (material.map) {
+          material.map.dispose();
+        }
+        material.dispose();
+      }
+      this.iconMesh = null;
     }
     if (this.robotGroup) {
       this.scene.remove(this.robotGroup);
