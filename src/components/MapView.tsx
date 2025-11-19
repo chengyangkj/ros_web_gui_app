@@ -99,6 +99,15 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     enabled: true,
     showFrameNames: true,
   },
+  topo: {
+    id: 'topo',
+    name: 'Topo地图',
+    topic: '/map/topology',
+    messageType: null,
+    enabled: true,
+    color: 0x0080ff,
+    pointSize: 0.2,
+  },
 };
 
 export function MapView({ connection }: MapViewProps) {
@@ -126,6 +135,13 @@ export function MapView({ connection }: MapViewProps) {
   const [focusRobot, setFocusRobot] = useState(false);
   const focusRobotRef = useRef(false);
   const followDistanceRef = useRef<number | null>(null);
+  const [selectedTopoPoint, setSelectedTopoPoint] = useState<{
+    name: string;
+    x: number;
+    y: number;
+    theta: number;
+  } | null>(null);
+  const raycasterRef = useRef<THREE.Raycaster | null>(null);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -164,6 +180,42 @@ export function MapView({ connection }: MapViewProps) {
     controls.update();
     
     controlsRef.current = controls;
+
+    const raycaster = new THREE.Raycaster();
+    raycasterRef.current = raycaster;
+
+    const handleClick = (event: MouseEvent) => {
+      if (!camera || !scene || !canvas) return;
+      
+      const rect = canvas.getBoundingClientRect();
+      const mouse = new THREE.Vector2();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(scene.children, true);
+
+      for (const intersect of intersects) {
+        let obj = intersect.object;
+        while (obj) {
+          if (obj.userData.isTopoPoint && obj.userData.topoPoint) {
+            const point = obj.userData.topoPoint;
+            setSelectedTopoPoint({
+              name: point.name,
+              x: point.x,
+              y: point.y,
+              theta: point.theta,
+            });
+            return;
+          }
+          obj = obj.parent as THREE.Object3D;
+        }
+      }
+      
+      setSelectedTopoPoint(null);
+    };
+
+    canvas.addEventListener('click', handleClick);
 
 
     const layerManager = new LayerManager(scene, connection);
@@ -245,6 +297,7 @@ export function MapView({ connection }: MapViewProps) {
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      canvas.removeEventListener('click', handleClick);
       cancelAnimationFrame(animationFrameId);
       controls.dispose();
       layerManager.dispose();
@@ -379,6 +432,41 @@ export function MapView({ connection }: MapViewProps) {
     });
   };
 
+  const handleNavigateToPoint = () => {
+    if (!selectedTopoPoint || !connection.isConnected()) {
+      return;
+    }
+
+    const quaternion = new THREE.Quaternion();
+    quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), selectedTopoPoint.theta);
+
+    const message = {
+      header: {
+        stamp: {
+          sec: Math.floor(Date.now() / 1000),
+          nanosec: (Date.now() % 1000) * 1000000,
+        },
+        frame_id: 'map',
+      },
+      pose: {
+        position: {
+          x: selectedTopoPoint.x,
+          y: selectedTopoPoint.y,
+          z: 0,
+        },
+        orientation: {
+          x: quaternion.x,
+          y: quaternion.y,
+          z: quaternion.z,
+          w: quaternion.w,
+        },
+      },
+    };
+
+    connection.publish('/goal_pose', 'geometry_msgs/msg/PoseStamped', message);
+    toast.success(`已发布导航目标: ${selectedTopoPoint.name}`);
+  };
+
   return (
     <div className="MapView">
       <div className="ViewControls">
@@ -415,6 +503,45 @@ export function MapView({ connection }: MapViewProps) {
           onConfigChange={handleConfigChange}
           onClose={() => setShowSettings(false)}
         />
+      )}
+      {selectedTopoPoint && (
+        <div className="TopoPointInfoPanel">
+          <div className="TopoPointInfoHeader">
+            <h3>导航点信息</h3>
+            <button
+              className="CloseButton"
+              onClick={() => setSelectedTopoPoint(null)}
+              type="button"
+            >
+              ×
+            </button>
+          </div>
+          <div className="TopoPointInfoContent">
+            <div className="InfoRow">
+              <span className="InfoLabel">名称:</span>
+              <span className="InfoValue">{selectedTopoPoint.name}</span>
+            </div>
+            <div className="InfoRow">
+              <span className="InfoLabel">X:</span>
+              <span className="InfoValue">{selectedTopoPoint.x.toFixed(3)}</span>
+            </div>
+            <div className="InfoRow">
+              <span className="InfoLabel">Y:</span>
+              <span className="InfoValue">{selectedTopoPoint.y.toFixed(3)}</span>
+            </div>
+            <div className="InfoRow">
+              <span className="InfoLabel">Theta:</span>
+              <span className="InfoValue">{selectedTopoPoint.theta.toFixed(3)}</span>
+            </div>
+            <button
+              className="NavigateButton"
+              onClick={handleNavigateToPoint}
+              type="button"
+            >
+              导航到此位置
+            </button>
+          </div>
+        </div>
       )}
       <canvas ref={canvasRef} className="MapCanvas" />
     </div>

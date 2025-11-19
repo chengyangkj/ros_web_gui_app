@@ -7,6 +7,7 @@ import { RobotLayer } from './RobotLayer';
 import { PathLayer } from './PathLayer';
 import { FootprintLayer } from './FootprintLayer';
 import { TFLayer } from './TFLayer';
+import { TopoLayer } from './TopoLayer';
 import type { LayerConfig, LayerConfigMap } from '../../types/LayerConfig';
 import { RosbridgeConnection } from '../../utils/RosbridgeConnection';
 
@@ -100,6 +101,9 @@ export class LayerManager {
         break;
       case 'tf':
         layer = new TFLayer(this.scene, config, this.connection);
+        break;
+      case 'topo':
+        layer = new TopoLayer(this.scene, config, this.connection);
         break;
       default:
         console.warn(`Unknown layer type: ${config.id}`);

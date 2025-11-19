@@ -105,3 +105,91 @@
   border-color: rgba(0, 200, 0, 1);
 }
 
+.TopoPointInfoPanel {
+  position: absolute;
+  top: 50px;
+  right: 20px;
+  width: 300px;
+  background-color: rgba(0, 0, 0, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  z-index: 20;
+  pointer-events: auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.TopoPointInfoHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.TopoPointInfoHeader h3 {
+  margin: 0;
+  color: white;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.CloseButton {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.CloseButton:hover {
+  color: #ff4444;
+}
+
+.TopoPointInfoContent {
+  padding: 16px;
+}
+
+.InfoRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.InfoLabel {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+}
+
+.InfoValue {
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.NavigateButton {
+  width: 100%;
+  background-color: rgba(0, 123, 255, 0.8);
+  color: white;
+  border: 1px solid rgba(0, 123, 255, 1);
+  padding: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+  margin-top: 16px;
+}
+
+.NavigateButton:hover {
+  background-color: rgba(0, 123, 255, 1);
+  border-color: rgba(0, 123, 255, 1);
+}
+

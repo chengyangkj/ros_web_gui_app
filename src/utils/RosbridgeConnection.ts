@@ -363,5 +363,32 @@ export class RosbridgeConnection {
     return this.topicsWithTypes.get(topicName);
   }
 
+  publish(topicName: string, messageType: string, message: unknown): void {
+    if (!this.ros || !this.ros.isConnected) {
+      console.error('Not connected to rosbridge');
+      return;
+    }
+
+    let actualMessageType = messageType;
+    const topicType = this.topicsWithTypes.get(topicName);
+    if (topicType) {
+      actualMessageType = topicType;
+    } else {
+      if (this.rosVersion === 2 && !messageType.includes('/msg/')) {
+        actualMessageType = messageType.replace('/', '/msg/');
+      } else if (this.rosVersion === 1 && messageType.includes('/msg/')) {
+        actualMessageType = messageType.replace('/msg/', '/');
+      }
+    }
+
+    const topic = new ROSLIB.Topic({
+      ros: this.ros,
+      name: topicName,
+      messageType: actualMessageType,
+    });
+
+    topic.publish(message as ROSLIB.Message);
+  }
+
 }
 

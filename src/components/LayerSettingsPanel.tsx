@@ -242,6 +242,20 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onClose }: La
                       />
                     </div>
                   )}
+                  {(config as any).pointSize !== undefined && (
+                    <div className="DetailRow">
+                      <span className="DetailLabel">点大小:</span>
+                      <input
+                        className="DetailInput NumberInput"
+                        type="number"
+                        min="0.01"
+                        max="2"
+                        step="0.01"
+                        value={(config as any).pointSize ?? 0.3}
+                        onChange={(e) => handleFieldChange(layerId, 'pointSize', parseFloat(e.target.value) || 0.3)}
+                      />
+                    </div>
+                  )}
                   {layerId === 'tf' && (config as any).showFrameNames !== undefined && (
                     <div className="DetailRow">
                       <span className="DetailLabel">显示frame名称:</span>
