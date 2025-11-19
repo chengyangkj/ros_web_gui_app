@@ -43,7 +43,6 @@ export class PathLayer extends BaseLayer {
   }
 
   update(message: unknown): void {
-    console.log('[PathLayer] update called, message:', message);
     const msg = message as Path;
     if (!msg.poses || !Array.isArray(msg.poses) || msg.poses.length === 0) {
       console.log('[PathLayer] No poses or empty poses');

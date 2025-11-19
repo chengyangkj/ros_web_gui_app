@@ -81,6 +81,8 @@ export class LayerManager {
         layer = new GridLayer(this.scene, config, this.connection);
         break;
       case 'occupancy_grid':
+      case 'local_costmap':
+      case 'global_costmap':
         layer = new OccupancyGridLayer(this.scene, config, this.connection);
         break;
       case 'laser_scan':
