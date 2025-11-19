@@ -41,3 +41,9 @@
 .read-the-docs {
   color: #888;
 }
+
+.Toastify__toast-container--top-center {
+  top: 1em !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+}

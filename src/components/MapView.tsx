@@ -616,7 +616,7 @@ export function MapView({ connection }: MapViewProps) {
               onClick={handleNavigateToPoint}
               type="button"
             >
-              导航到此位置
+              单点导航
             </button>
           </div>
         </div>
