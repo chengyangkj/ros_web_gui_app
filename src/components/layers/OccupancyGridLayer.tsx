@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { BaseLayer } from './BaseLayer';
+import type { LayerConfig } from '../../types/LayerConfig';
+import type { RosbridgeConnection } from '../../utils/RosbridgeConnection';
 
 interface OccupancyGrid {
   header: {
@@ -28,11 +30,26 @@ interface OccupancyGrid {
 export class OccupancyGridLayer extends BaseLayer {
   private mesh: THREE.Mesh | null = null;
 
+  constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
+    super(scene, config, connection);
+    console.log('[OccupancyGridLayer] Constructor:', { topic: config.topic, hasConnection: !!connection, isConnected: connection?.isConnected() });
+    if (config.topic) {
+      this.subscribe(config.topic, this.getMessageType());
+    }
+  }
+
+  getMessageType(): string | null {
+    return 'nav_msgs/OccupancyGrid';
+  }
+
   update(message: unknown): void {
+    console.log('[OccupancyGridLayer] update called, message:', message);
     const msg = message as OccupancyGrid;
     if (!msg.info || !msg.data) {
+      console.warn('[OccupancyGridLayer] Invalid message format:', { hasInfo: !!msg.info, hasData: !!msg.data });
       return;
     }
+    console.log('[OccupancyGridLayer] Processing message:', { width: msg.info.width, height: msg.info.height });
 
     if (this.mesh) {
       this.scene.remove(this.mesh);

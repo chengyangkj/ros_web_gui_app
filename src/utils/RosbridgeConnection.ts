@@ -14,6 +14,12 @@ export class RosbridgeConnection {
   private providerTopics: TopicInfo[] = [];
   private topicsChangeCallbacks: Set<(topics: TopicInfo[]) => void> = new Set();
   private topicsCheckInterval?: ReturnType<typeof setInterval>;
+  private topicsAndRawTypesCache?: {
+    topics: string[];
+    types: string[];
+    typedefs_full_text: string[];
+    timestamp: number;
+  };
 
   async connect(url: string): Promise<boolean> {
     return new Promise((resolve) => {
@@ -169,7 +175,7 @@ export class RosbridgeConnection {
     });
   }
 
-  async getTopicsAndRawTypes(): Promise<{
+  async getTopicsAndRawTypes(useCache: boolean = true): Promise<{
     topics: string[];
     types: string[];
     typedefs_full_text: string[];
@@ -178,12 +184,34 @@ export class RosbridgeConnection {
       throw new Error('Not connected to rosbridge');
     }
 
+    const CACHE_DURATION = 5000;
+    const now = Date.now();
+    
+    if (useCache && this.topicsAndRawTypesCache) {
+      const age = now - this.topicsAndRawTypesCache.timestamp;
+      if (age < CACHE_DURATION) {
+        return this.topicsAndRawTypesCache;
+      }
+    }
+
     return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        console.error('[RosbridgeConnection] getTopicsAndRawTypes timeout after 10 seconds');
+        reject(new Error('getTopicsAndRawTypes timeout'));
+      }, 10000);
+
       (this.ros as ROSLIB.Ros).getTopicsAndRawTypes(
         (result: { topics: string[]; types: string[]; typedefs_full_text: string[] }) => {
+          clearTimeout(timeout);
+          this.topicsAndRawTypesCache = {
+            ...result,
+            timestamp: now
+          };
           resolve(result);
         },
         (error: string) => {
+          clearTimeout(timeout);
+          console.error('[RosbridgeConnection] getTopicsAndRawTypes error:', error);
           reject(new Error(error));
         }
       );
@@ -196,7 +224,14 @@ export class RosbridgeConnection {
     }
 
     try {
+      console.log('[RosbridgeConnection] initializeMessageReaders: calling getTopicsAndRawTypes...');
       const result = await this.getTopicsAndRawTypes();
+      console.log('[RosbridgeConnection] getTopicsAndRawTypes result:', {
+        topicsCount: result.topics.length,
+        typesCount: result.types.length,
+        topics: result.topics.slice(0, 10),
+        types: result.types.slice(0, 10)
+      });
 
       if (result.types.includes('rcl_interfaces/msg/Log')) {
         this.rosVersion = 2;
@@ -205,11 +240,13 @@ export class RosbridgeConnection {
       } else {
         this.rosVersion = 1;
       }
+      console.log('[RosbridgeConnection] Detected ROS version:', this.rosVersion);
 
       this.messageReaders.clear();
       this.topicsWithTypes.clear();
       this.providerTopics = [];
 
+      let createdCount = 0;
       for (let i = 0; i < result.topics.length; i++) {
         const topicName = result.topics[i]!;
         const type = result.types[i];
@@ -232,11 +269,26 @@ export class RosbridgeConnection {
                 ? new ROS1MessageReader(parsedDefinition)
                 : new ROS2MessageReader(parsedDefinition);
             this.messageReaders.set(type, reader);
+            
+            if (this.rosVersion === 2 && type.includes('/msg/')) {
+              const ros1Type = type.replace('/msg/', '/');
+              if (!this.messageReaders.has(ros1Type)) {
+                this.messageReaders.set(ros1Type, reader);
+              }
+            } else if (this.rosVersion === 1 && !type.includes('/msg/')) {
+              const ros2Type = type.replace('/', '/msg/');
+              if (!this.messageReaders.has(ros2Type)) {
+                this.messageReaders.set(ros2Type, reader);
+              }
+            }
+            
+            createdCount++;
           } catch (error) {
             console.error(`Failed to create message reader for ${type}:`, error);
           }
         }
       }
+      console.log(`[RosbridgeConnection] initializeMessageReaders completed: created ${createdCount} readers, total: ${this.messageReaders.size}`);
     } catch (error) {
       console.error('Failed to initialize message readers:', error);
       throw error;
@@ -257,24 +309,45 @@ export class RosbridgeConnection {
       this.subscribers.get(topicName)?.unsubscribe();
     }
 
+    let actualMessageType = messageType;
+    
+    const topicType = this.topicsWithTypes.get(topicName);
+    if (topicType) {
+      actualMessageType = topicType;
+    } else {
+      if (this.rosVersion === 2 && !messageType.includes('/msg/')) {
+        actualMessageType = messageType.replace('/', '/msg/');
+      } else if (this.rosVersion === 1 && messageType.includes('/msg/')) {
+        actualMessageType = messageType.replace('/msg/', '/');
+      }
+    }
+
     const topic = new ROSLIB.Topic({
       ros: this.ros,
       name: topicName,
-      messageType: messageType,
+      messageType: actualMessageType,
       compression: 'cbor-raw',
     });
 
-    const messageReader = this.messageReaders.get(messageType);
+    const messageReader = this.messageReaders.get(actualMessageType) || this.messageReaders.get(messageType);
+    
+    console.log(`[RosbridgeConnection] subscribe ${topicName}:`, {
+      requestedType: messageType,
+      actualType: actualMessageType,
+      hasMessageReader: !!messageReader,
+      rosVersion: this.rosVersion
+    });
 
     topic.subscribe((message) => {
-      if (messageReader) {
+      const currentReader = this.messageReaders.get(actualMessageType) || this.messageReaders.get(messageType);
+      if (currentReader) {
         try {
           const buffer = (message as { bytes: ArrayBuffer }).bytes;
           const bytes = new Uint8Array(buffer);
-          const parsedMessage = messageReader.readMessage(bytes);
+          const parsedMessage = currentReader.readMessage(bytes);
           callback(parsedMessage);
         } catch (error) {
-          console.error(`Failed to parse message on ${topicName}:`, error);
+          console.error(`Failed to parse message on ${topicName}:`, error, message);
           callback(message);
         }
       } else {
@@ -289,5 +362,6 @@ export class RosbridgeConnection {
   getTopicType(topicName: string): string | undefined {
     return this.topicsWithTypes.get(topicName);
   }
+
 }
 

@@ -13,8 +13,8 @@ export class RobotLayer extends BaseLayer {
   private updateInterval: ReturnType<typeof setInterval> | null = null;
   private iconMesh: THREE.Mesh | null = null;
 
-  constructor(scene: THREE.Scene, config: LayerConfig) {
-    super(scene, config);
+  constructor(scene: THREE.Scene, config: LayerConfig, connection: any = null) {
+    super(scene, config, connection);
     this.tf2js = TF2JS.getInstance();
     this.baseFrame = (config as any).baseFrame || 'base_link';
     this.mapFrame = (config as any).mapFrame || 'map';
@@ -26,6 +26,10 @@ export class RobotLayer extends BaseLayer {
     this.updateInterval = setInterval(() => {
       this.updateRobotTransform();
     }, 100);
+  }
+
+  getMessageType(): string | null {
+    return null;
   }
 
   private createSVGTexture(): THREE.Texture {

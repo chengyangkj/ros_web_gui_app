@@ -15,7 +15,7 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
   grid: {
     id: 'grid',
     name: '网格',
-    topic: null,
+    topic: '/map',
     messageType: null,
     enabled: true,
     visible: true,
@@ -173,63 +173,16 @@ export function MapView({ connection }: MapViewProps) {
     const initializeAndSubscribe = async () => {
       try {
         await connection.initializeMessageReaders();
-        setStatus('消息解析器初始化完成，查找话题...');
+        setStatus('消息解析器初始化完成');
 
-        connection.getTopics(
-          (topics) => {
-            const updatedConfigs: LayerConfigMap = { ...layerConfigs };
+        TF2JS.getInstance().initialize(connection);
+        layerManagerRef.current?.setLayerConfigs(layerConfigs);
 
-            for (const [layerId, config] of Object.entries(updatedConfigs)) {
-              if (!config.topic) {
-                continue;
-              }
-
-            const matchingTopics = topics.filter((t) => {
-              if (layerId === 'occupancy_grid') {
-                return t.includes('map') && !t.includes('_');
-              } else if (layerId === 'laser_scan') {
-                return t.includes('scan') || t.includes('laser');
-              } else if (layerId === 'robot') {
-                return t.includes('tf');
-              } else if (layerId === 'local_plan') {
-                return t.includes('local_plan');
-              } else if (layerId === 'plan') {
-                return t === '/plan' || (t.includes('plan') && !t.includes('local'));
-              } else if (layerId === 'footprint') {
-                return t.includes('footprint') || t.includes('published_footprint');
-              }
-              return t === config.topic;
-            });
-
-              if (matchingTopics.length > 0) {
-                const topic = matchingTopics[0]!;
-                const messageType = connection.getTopicType(topic) || config.messageType;
-                updatedConfigs[layerId] = {
-                  ...config,
-                  topic,
-                  messageType,
-                };
-              }
-            }
-
-            TF2JS.getInstance().initialize(connection);
-
-            setLayerConfigs(updatedConfigs);
-            layerManagerRef.current?.setLayerConfigs(updatedConfigs);
-
-            const topicList = Object.values(updatedConfigs)
-              .filter((c) => c.enabled && c.visible)
-              .map((c) => `${c.topic} (${c.messageType})`)
-              .join(', ');
-            setStatus(`已订阅话题: ${topicList}`);
-          },
-          (error) => {
-            console.error('Failed to get topics:', error);
-            setStatus('获取话题列表失败，使用默认配置...');
-            TF2JS.getInstance().initialize(connection);
-            layerManagerRef.current?.setLayerConfigs(layerConfigs);
-          }
-        );
+        const topicList = Object.values(layerConfigs)
+          .filter((c) => c.enabled && c.visible && c.topic)
+          .map((c) => c.topic)
+          .join(', ');
+        setStatus(`已初始化图层${topicList ? `: ${topicList}` : ''}`);
       } catch (error) {
         console.error('Failed to initialize message readers:', error);
         setStatus('初始化失败，使用默认配置...');
@@ -246,10 +199,10 @@ export function MapView({ connection }: MapViewProps) {
   }, [connection]);
 
   useEffect(() => {
-    if (layerManagerRef.current) {
+    if (layerManagerRef.current && connection.isConnected()) {
       layerManagerRef.current.setLayerConfigs(layerConfigs);
     }
-  }, [layerConfigs]);
+  }, [layerConfigs, connection]);
 
   useEffect(() => {
     viewModeRef.current = viewMode;

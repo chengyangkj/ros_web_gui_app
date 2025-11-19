@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { BaseLayer } from './BaseLayer';
+import type { LayerConfig } from '../../types/LayerConfig';
+import type { RosbridgeConnection } from '../../utils/RosbridgeConnection';
 
 interface LaserScan {
   header: {
@@ -22,6 +24,17 @@ interface LaserScan {
 
 export class LaserScanLayer extends BaseLayer {
   private points: THREE.Points | null = null;
+
+  constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
+    super(scene, config, connection);
+    if (config.topic) {
+      this.subscribe(config.topic, this.getMessageType());
+    }
+  }
+
+  getMessageType(): string | null {
+    return 'sensor_msgs/LaserScan';
+  }
 
   update(message: unknown): void {
     const msg = message as LaserScan;

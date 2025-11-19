@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { BaseLayer } from './BaseLayer';
+import type { LayerConfig } from '../../types/LayerConfig';
+import type { RosbridgeConnection } from '../../utils/RosbridgeConnection';
 
 interface Point {
   x: number;
@@ -27,14 +29,24 @@ export class PathLayer extends BaseLayer {
   private line: THREE.Line | null = null;
   private color: number;
 
-  constructor(scene: THREE.Scene, config: any) {
-    super(scene, config);
+  constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
+    super(scene, config, connection);
     this.color = (config as any).color || 0x00ff00;
+    console.log('[PathLayer] Constructor:', { topic: config.topic, hasConnection: !!connection, isConnected: connection?.isConnected(), color: this.color });
+    if (config.topic) {
+      this.subscribe(config.topic, this.getMessageType());
+    }
+  }
+
+  getMessageType(): string | null {
+    return 'nav_msgs/Path';
   }
 
   update(message: unknown): void {
+    console.log('[PathLayer] update called, message:', message);
     const msg = message as Path;
     if (!msg.poses || !Array.isArray(msg.poses) || msg.poses.length === 0) {
+      console.log('[PathLayer] No poses or empty poses');
       if (this.line) {
         this.scene.remove(this.line);
         this.line.geometry.dispose();

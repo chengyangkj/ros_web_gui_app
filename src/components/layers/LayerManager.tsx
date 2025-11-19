@@ -14,19 +14,14 @@ export class LayerManager {
   private connection: RosbridgeConnection;
   private layers: Map<string, BaseLayer> = new Map();
   private layerConfigs: LayerConfigMap = {};
-  private unsubscribeCallbacks: Map<string, () => void> = new Map();
-  private topicsChangeUnsubscribe?: () => void;
 
   constructor(scene: THREE.Scene, connection: RosbridgeConnection) {
     this.scene = scene;
     this.connection = connection;
-
-    this.topicsChangeUnsubscribe = connection.onTopicsChange((topics) => {
-      this.handleTopicsChange(topics);
-    });
   }
 
   setLayerConfigs(configs: LayerConfigMap): void {
+    console.log('[LayerManager] setLayerConfigs called:', Object.keys(configs), 'connection connected:', this.connection.isConnected());
     this.layerConfigs = configs;
     this.updateLayers();
   }
@@ -46,58 +41,59 @@ export class LayerManager {
     const currentLayerIds = new Set(this.layers.keys());
     const configLayerIds = new Set(Object.keys(this.layerConfigs));
 
+    console.log('[LayerManager] updateLayers:', { 
+      currentLayers: Array.from(currentLayerIds), 
+      configLayers: Array.from(configLayerIds),
+      connectionConnected: this.connection.isConnected()
+    });
+
     for (const layerId of currentLayerIds) {
       if (!configLayerIds.has(layerId)) {
+        console.log('[LayerManager] Removing layer:', layerId);
         this.removeLayer(layerId);
       }
     }
 
     for (const [layerId, config] of Object.entries(this.layerConfigs)) {
       if (!this.layers.has(layerId)) {
+        console.log('[LayerManager] Creating new layer:', layerId, config);
         this.createLayer(layerId, config);
       } else {
         const layer = this.layers.get(layerId)!;
-        layer.setConfig(config);
-        if (config.visible && config.enabled) {
-          if (config.topic) {
-            this.subscribeLayer(layerId, config);
-          } else if (layerId === 'grid') {
-            this.subscribeGridLayer();
-          }
-        } else {
-          if (layerId !== 'robot') {
-            this.unsubscribeLayer(layerId);
-          }
-          if (!config.visible && layer.getObject3D()) {
-            this.scene.remove(layer.getObject3D()!);
-          }
+        const oldConnection = (layer as any).connection;
+        if (oldConnection !== this.connection) {
+          console.log('[LayerManager] Updating connection for layer:', layerId);
+          layer.setConnection(this.connection);
         }
+        console.log('[LayerManager] Updating config for layer:', layerId);
+        layer.setConfig(config);
       }
     }
   }
 
   private createLayer(layerId: string, config: LayerConfig): void {
+    console.log('[LayerManager] createLayer:', layerId, config.id, 'connection connected:', this.connection.isConnected());
     let layer: BaseLayer;
 
     switch (config.id) {
       case 'grid':
-        layer = new GridLayer(this.scene, config);
+        layer = new GridLayer(this.scene, config, this.connection);
         break;
       case 'occupancy_grid':
-        layer = new OccupancyGridLayer(this.scene, config);
+        layer = new OccupancyGridLayer(this.scene, config, this.connection);
         break;
       case 'laser_scan':
-        layer = new LaserScanLayer(this.scene, config);
+        layer = new LaserScanLayer(this.scene, config, this.connection);
         break;
       case 'robot':
-        layer = new RobotLayer(this.scene, config);
+        layer = new RobotLayer(this.scene, config, this.connection);
         break;
       case 'local_plan':
       case 'plan':
-        layer = new PathLayer(this.scene, config);
+        layer = new PathLayer(this.scene, config, this.connection);
         break;
       case 'footprint':
-        layer = new FootprintLayer(this.scene, config);
+        layer = new FootprintLayer(this.scene, config, this.connection);
         break;
       default:
         console.warn(`Unknown layer type: ${config.id}`);
@@ -105,122 +101,14 @@ export class LayerManager {
     }
 
     this.layers.set(layerId, layer);
-
-    if (config.visible && config.enabled) {
-      if (config.topic) {
-        this.subscribeLayer(layerId, config);
-      } else if (layerId === 'grid') {
-        this.subscribeGridLayer();
-      }
-    }
+    console.log('[LayerManager] Layer created:', layerId, 'has object3D:', !!layer.getObject3D());
   }
 
   private removeLayer(layerId: string): void {
-    if (layerId !== 'robot') {
-      this.unsubscribeLayer(layerId);
-    }
     const layer = this.layers.get(layerId);
     if (layer) {
       layer.dispose();
       this.layers.delete(layerId);
-    }
-  }
-
-  private subscribeLayer(layerId: string, config: LayerConfig): void {
-    if (!config.topic) {
-      return;
-    }
-
-    this.unsubscribeLayer(layerId);
-
-    const layer = this.layers.get(layerId);
-    if (!layer) {
-      return;
-    }
-
-    const messageType = config.messageType || this.connection.getTopicType(config.topic);
-    if (!messageType) {
-      console.warn(`No message type found for topic: ${config.topic}`);
-      return;
-    }
-
-    const callback = (message: unknown) => {
-      if (layer.getConfig().enabled && layer.getConfig().visible) {
-        layer.update(message);
-        const obj3D = layer.getObject3D();
-        if (obj3D && !this.scene.children.includes(obj3D)) {
-          this.scene.add(obj3D);
-        }
-      }
-    };
-
-    this.connection.subscribe(config.topic, messageType, callback);
-    this.unsubscribeCallbacks.set(layerId, () => {
-      if (config.topic) {
-        this.connection.unsubscribe(config.topic);
-      }
-    });
-  }
-
-  private subscribeGridLayer(): void {
-    const gridLayer = this.layers.get('grid');
-    if (!gridLayer) {
-      return;
-    }
-
-    const occupancyConfig = this.layerConfigs['occupancy_grid'];
-    if (!occupancyConfig?.topic) {
-      return;
-    }
-
-    this.unsubscribeLayer('grid');
-
-    const messageType = occupancyConfig.messageType || this.connection.getTopicType(occupancyConfig.topic);
-    if (!messageType) {
-      return;
-    }
-
-    const callback = (message: unknown) => {
-      if (gridLayer.getConfig().enabled && gridLayer.getConfig().visible) {
-        gridLayer.update(message);
-        const obj3D = gridLayer.getObject3D();
-        if (obj3D && !this.scene.children.includes(obj3D)) {
-          this.scene.add(obj3D);
-        }
-      }
-    };
-
-    this.connection.subscribe(occupancyConfig.topic, messageType, callback);
-    this.unsubscribeCallbacks.set('grid', () => {
-      if (occupancyConfig.topic) {
-        this.connection.unsubscribe(occupancyConfig.topic);
-      }
-    });
-  }
-
-  private unsubscribeLayer(layerId: string): void {
-    const unsubscribe = this.unsubscribeCallbacks.get(layerId);
-    if (unsubscribe) {
-      unsubscribe();
-      this.unsubscribeCallbacks.delete(layerId);
-    }
-  }
-
-  private handleTopicsChange(topics: { name: string; type: string }[]): void {
-    const availableTopics = new Set(topics.map((t) => t.name));
-
-    for (const [layerId, config] of Object.entries(this.layerConfigs)) {
-      if (config.enabled && config.visible && config.topic) {
-        if (availableTopics.has(config.topic)) {
-          const topicInfo = topics.find((t) => t.name === config.topic);
-          if (topicInfo && topicInfo.type !== config.messageType) {
-            this.updateLayerConfig(layerId, { messageType: topicInfo.type });
-            this.subscribeLayer(layerId, { ...config, messageType: topicInfo.type });
-          } else if (!this.unsubscribeCallbacks.has(layerId)) {
-            this.subscribeLayer(layerId, config);
-          }
-        }
-      }
     }
   }
 
@@ -229,8 +117,6 @@ export class LayerManager {
       this.removeLayer(layerId);
     }
     this.layers.clear();
-    this.unsubscribeCallbacks.clear();
-    this.topicsChangeUnsubscribe?.();
   }
 }
 

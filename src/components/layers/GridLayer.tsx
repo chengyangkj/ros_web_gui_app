@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { BaseLayer } from './BaseLayer';
+import type { LayerConfig } from '../../types/LayerConfig';
+import type { RosbridgeConnection } from '../../utils/RosbridgeConnection';
 
 interface OccupancyGrid {
   info?: {
@@ -20,9 +22,16 @@ export class GridLayer extends BaseLayer {
   private mapOriginX: number = 0;
   private mapOriginY: number = 0;
 
-  constructor(scene: THREE.Scene, config: any) {
-    super(scene, config);
+  constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
+    super(scene, config, connection);
     this.createDefaultGrid();
+    if (config.topic) {
+      this.subscribe(config.topic, this.getMessageType());
+    }
+  }
+
+  getMessageType(): string | null {
+    return 'nav_msgs/OccupancyGrid';
   }
 
   private createDefaultGrid(): void {
@@ -34,9 +43,20 @@ export class GridLayer extends BaseLayer {
     const gridSize = 20;
     const divisions = 20;
 
-    this.gridHelper = new THREE.GridHelper(gridSize, divisions, 0x444444, 0x222222);
+    this.gridHelper = new THREE.GridHelper(gridSize, divisions, 0xdddddd, 0xdddddd);
     this.gridHelper.rotation.x = Math.PI / 2;
-    this.gridHelper.position.set(0, 0, 0);
+    this.gridHelper.position.set(0, 0, 0.001);
+    this.gridHelper.renderOrder = -1;
+    
+    const materials = Array.isArray(this.gridHelper.material) 
+      ? this.gridHelper.material 
+      : [this.gridHelper.material];
+    materials.forEach((mat) => {
+      const material = mat as THREE.LineBasicMaterial;
+      material.transparent = true;
+      material.opacity = 0.5;
+      material.depthTest = true;
+    });
 
     this.object3D = this.gridHelper;
     this.scene.add(this.gridHelper);
@@ -83,13 +103,25 @@ export class GridLayer extends BaseLayer {
     const gridSize = Math.max(mapSizeX, mapSizeY) * 1.5;
     const divisions = Math.ceil(gridSize);
 
-    this.gridHelper = new THREE.GridHelper(gridSize, divisions, 0x444444, 0x222222);
+    this.gridHelper = new THREE.GridHelper(gridSize, divisions, 0xdddddd, 0xdddddd);
     this.gridHelper.rotation.x = Math.PI / 2;
     this.gridHelper.position.set(
       this.mapOriginX + mapSizeX / 2,
       this.mapOriginY + mapSizeY / 2,
-      0
+      -0.001
     );
+    this.gridHelper.renderOrder = -1;
+    
+    const materials = Array.isArray(this.gridHelper.material) 
+      ? this.gridHelper.material 
+      : [this.gridHelper.material];
+    materials.forEach((mat) => {
+      const material = mat as THREE.LineBasicMaterial;
+      material.transparent = true;
+      material.opacity = 0.5;
+      material.depthTest = true;
+      material.depthWrite = false;
+    });
 
     this.object3D = this.gridHelper;
     this.scene.add(this.gridHelper);
