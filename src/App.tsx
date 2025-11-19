@@ -82,11 +82,6 @@ function App() {
     return (
       <>
         <div style={{ width: '100vw', height: '100vh', margin: 0, padding: 0, overflow: 'hidden' }}>
-          <div style={{ position: 'absolute', top: 10, right: 10, zIndex: 1000 }}>
-            <button onClick={handleDisconnect} style={{ padding: '0.5rem 1rem', cursor: 'pointer' }}>
-              断开连接
-            </button>
-          </div>
           <MapView connection={connection} />
         </div>
         <ToastContainer />

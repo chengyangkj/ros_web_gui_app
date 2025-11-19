@@ -85,7 +85,7 @@ export class RobotLayer extends BaseLayer {
         alphaTest: 0.1,
       });
       const iconMesh = new THREE.Mesh(geometry, material);
-      iconMesh.position.set(0, 0, 0);
+      iconMesh.position.set(0, 0, 0.001);
       iconMesh.rotation.set(0, 0, Math.PI / 4);
       this.iconMesh = iconMesh;
       robotGroup.add(iconMesh);
