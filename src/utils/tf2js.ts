@@ -292,5 +292,43 @@ export class TF2JS {
   public hasFrame(frameId: string): boolean {
     return this.frames.has(frameId);
   }
+
+  public transformPoint(point: THREE.Vector3, sourceFrame: string, targetFrame: string): THREE.Vector3 | null {
+    const transform = this.findTransform(targetFrame, sourceFrame);
+    if (!transform) {
+      return null;
+    }
+
+    const matrix = new THREE.Matrix4();
+    matrix.makeRotationFromQuaternion(transform.rotation);
+    matrix.setPosition(transform.translation);
+    
+    return point.clone().applyMatrix4(matrix);
+  }
+
+  public transformPoints(points: THREE.Vector3[], sourceFrame: string, targetFrame: string): THREE.Vector3[] | null {
+    const transform = this.findTransform(targetFrame, sourceFrame);
+    if (!transform) {
+      return null;
+    }
+
+    const matrix = new THREE.Matrix4();
+    matrix.makeRotationFromQuaternion(transform.rotation);
+    matrix.setPosition(transform.translation);
+    
+    return points.map(point => point.clone().applyMatrix4(matrix));
+  }
+
+  public getTransformMatrix(sourceFrame: string, targetFrame: string): THREE.Matrix4 | null {
+    const transform = this.findTransform(targetFrame, sourceFrame);
+    if (!transform) {
+      return null;
+    }
+
+    const matrix = new THREE.Matrix4();
+    matrix.makeRotationFromQuaternion(transform.rotation);
+    matrix.setPosition(transform.translation);
+    return matrix;
+  }
 }
 

@@ -36,6 +36,7 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     messageType: 'sensor_msgs/LaserScan',
     enabled: true,
     visible: true,
+    targetFrame: 'map',
   },
   robot: {
     id: 'robot',
