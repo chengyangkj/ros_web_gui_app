@@ -101,12 +101,7 @@ export class OccupancyGridLayer extends BaseLayer {
   }
   
   renderMap(msg: OccupancyGrid): void {
-    console.log('[OccupancyGridLayer] renderMap called', { 
-      hasInfo: !!msg.info, 
-      hasData: !!msg.data,
-      width: msg.info?.width,
-      height: msg.info?.height 
-    });
+ 
     if (!msg.info || !msg.data) {
       console.log('[OccupancyGridLayer] renderMap skipped: missing info or data');
       return;
@@ -193,14 +188,7 @@ export class OccupancyGridLayer extends BaseLayer {
 
   update(message: unknown): void {
     const msg = message as OccupancyGrid;
-    console.log('[OccupancyGridLayer] update called', { 
-      topic: this.config.topic,
-      layerId: this.config.id,
-      hasInfo: !!msg.info, 
-      hasData: !!msg.data,
-      width: msg.info?.width,
-      height: msg.info?.height
-    });
+
     if (!msg.info || !msg.data) {
       console.log('[OccupancyGridLayer] update skipped: missing info or data', { layerId: this.config.id });
       return;
@@ -210,7 +198,6 @@ export class OccupancyGridLayer extends BaseLayer {
       console.warn('[OccupancyGridLayer] update called for /map topic, but should use MapManager instead. Ignoring.', { layerId: this.config.id });
       return;
     } else {
-      console.log('[OccupancyGridLayer] Direct rendering', { layerId: this.config.id });
       this.renderMap(msg);
     }
   }

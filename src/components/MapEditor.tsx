@@ -100,6 +100,19 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     scene.background = new THREE.Color(0x1a1a1a);
     sceneRef.current = scene;
 
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(5, 5, 10);
+    directionalLight.castShadow = false;
+    scene.add(directionalLight);
+
+    const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
+    directionalLight2.position.set(-5, -5, 5);
+    directionalLight2.castShadow = false;
+    scene.add(directionalLight2);
+
     THREE.Object3D.DEFAULT_UP = new THREE.Vector3(0, 0, 1);
     
     const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
