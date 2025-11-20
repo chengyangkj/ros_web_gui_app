@@ -87,6 +87,8 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   const currentGridChangesRef = useRef<Map<number, { oldValue: number; newValue: number }>>(new Map());
   const initialGridValuesRef = useRef<Map<number, number>>(new Map());
   const dragStartPointRef = useRef<TopoPoint | null>(null);
+  const [supportControllers, setSupportControllers] = useState<string[]>(['FollowPath']);
+  const [supportGoalCheckers, setSupportGoalCheckers] = useState<string[]>(['general_goal_checker']);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -838,6 +840,44 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     const mapManager = mapManagerRef.current;
     const topologyMap = mapManager.getTopologyMap();
     
+    const mapProperty = mapManager.getMapProperty();
+    const defaultControllers = ['FollowPath'];
+    const defaultGoalCheckers = ['general_goal_checker'];
+    
+    const allControllers = new Set<string>(defaultControllers);
+    const allGoalCheckers = new Set<string>(defaultGoalCheckers);
+    
+    if (mapProperty) {
+      if (mapProperty.support_controllers) {
+        mapProperty.support_controllers.forEach(c => allControllers.add(c));
+      }
+      if (mapProperty.support_goal_checkers) {
+        mapProperty.support_goal_checkers.forEach(g => allGoalCheckers.add(g));
+      }
+    }
+    
+    const routes = mapManager.getTopologyRoutes();
+    routes.forEach(route => {
+      if (route.route_info.controller) {
+        allControllers.add(route.route_info.controller);
+      }
+      if (route.route_info.goal_checker) {
+        allGoalCheckers.add(route.route_info.goal_checker);
+      }
+    });
+    
+    if (selectedRoute) {
+      if (selectedRoute.route_info.controller) {
+        allControllers.add(selectedRoute.route_info.controller);
+      }
+      if (selectedRoute.route_info.goal_checker) {
+        allGoalCheckers.add(selectedRoute.route_info.goal_checker);
+      }
+    }
+    
+    setSupportControllers(Array.from(allControllers).sort());
+    setSupportGoalCheckers(Array.from(allGoalCheckers).sort());
+    
     if (topoLayerRef.current) {
       (topoLayerRef.current as any).update(topologyMap);
       // 更新后恢复选中状态
@@ -857,6 +897,40 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
 
   const handleSave = () => {
     const mapManager = mapManagerRef.current;
+    
+    const defaultControllers = ['FollowPath'];
+    const defaultGoalCheckers = ['general_goal_checker'];
+    
+    const allControllers = new Set<string>(defaultControllers);
+    const allGoalCheckers = new Set<string>(defaultGoalCheckers);
+    
+    const existingMapProperty = mapManager.getMapProperty();
+    if (existingMapProperty) {
+      if (existingMapProperty.support_controllers) {
+        existingMapProperty.support_controllers.forEach(c => allControllers.add(c));
+      }
+      if (existingMapProperty.support_goal_checkers) {
+        existingMapProperty.support_goal_checkers.forEach(g => allGoalCheckers.add(g));
+      }
+    }
+    
+    const routes = mapManager.getTopologyRoutes();
+    routes.forEach(route => {
+      if (route.route_info.controller) {
+        allControllers.add(route.route_info.controller);
+      }
+      if (route.route_info.goal_checker) {
+        allGoalCheckers.add(route.route_info.goal_checker);
+      }
+    });
+    
+    const mapProperty = {
+      support_controllers: Array.from(allControllers).sort(),
+      support_goal_checkers: Array.from(allGoalCheckers).sort(),
+    };
+    
+    mapManager.updateMapProperty(mapProperty);
+    
     try {
       mapManager.saveAndPublishTopology(connection);
       toast.success('拓扑地图已保存并发布');
@@ -946,6 +1020,16 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
 
   const handleRoutePropertyChange = (field: keyof RouteInfo, value: string | number) => {
     if (!selectedRoute) return;
+    
+    if (field === 'controller' && typeof value === 'string') {
+      if (!supportControllers.includes(value)) {
+        setSupportControllers([...supportControllers, value]);
+      }
+    } else if (field === 'goal_checker' && typeof value === 'string') {
+      if (!supportGoalCheckers.includes(value)) {
+        setSupportGoalCheckers([...supportGoalCheckers, value]);
+      }
+    }
     
     const oldRoute = { ...selectedRoute };
     const updatedRoute: Route = {
@@ -1209,7 +1293,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
             type="button"
             title="拓扑连线"
           >
-            🔗 连线
+            🔗 拓扑路径
           </button>
           <button
             className={`ToolButton ${currentTool === 'brush' ? 'active' : ''}`}
@@ -1223,7 +1307,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
             type="button"
             title="绘制障碍物"
           >
-            🖌️ 画笔
+            🖌️ 障碍物绘制
           </button>
           <button
             className={`ToolButton ${currentTool === 'eraser' ? 'active' : ''}`}
@@ -1251,7 +1335,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
             type="button"
             title="直线绘制"
           >
-            📏 直线
+            📏 直线绘制
           </button>
         </div>
         {(currentTool === 'brush' || currentTool === 'eraser' || currentTool === 'drawLine') && (
@@ -1394,19 +1478,43 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
               </div>
               <div className="PropertyRow">
                 <label>控制器:</label>
-                <input
-                  type="text"
+                <select
                   value={selectedRoute.route_info.controller}
                   onChange={(e) => handleRoutePropertyChange('controller', e.target.value)}
-                />
+                  style={{
+                    width: '100%',
+                    padding: '4px 8px',
+                    backgroundColor: '#1a1a1a',
+                    color: 'white',
+                    border: '1px solid #444',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                  }}
+                >
+                  {supportControllers.map(controller => (
+                    <option key={controller} value={controller}>{controller}</option>
+                  ))}
+                </select>
               </div>
               <div className="PropertyRow">
                 <label>目标检查器:</label>
-                <input
-                  type="text"
+                <select
                   value={selectedRoute.route_info.goal_checker}
                   onChange={(e) => handleRoutePropertyChange('goal_checker', e.target.value)}
-                />
+                  style={{
+                    width: '100%',
+                    padding: '4px 8px',
+                    backgroundColor: '#1a1a1a',
+                    color: 'white',
+                    border: '1px solid #444',
+                    borderRadius: '4px',
+                    fontSize: '14px',
+                  }}
+                >
+                  {supportGoalCheckers.map(goalChecker => (
+                    <option key={goalChecker} value={goalChecker}>{goalChecker}</option>
+                  ))}
+                </select>
               </div>
               <div className="PropertyRow">
                 <label>速度限制:</label>

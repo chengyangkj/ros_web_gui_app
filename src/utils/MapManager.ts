@@ -63,6 +63,7 @@ export class MapManager {
   
   private points: Map<string, TopoPoint> = new Map();
   private routes: Route[] = [];
+  private mapProperty: { support_controllers?: string[]; support_goal_checkers?: string[] } | undefined;
   private topologyListeners: Set<TopologyMapUpdateListener> = new Set();
   private occupancyGridListeners: Set<OccupancyGridUpdateListener> = new Set();
   private connection: RosbridgeConnection | null = null;
@@ -191,6 +192,7 @@ export class MapManager {
     }
     
     this.routes = msg.routes || [];
+    this.mapProperty = msg.map_property;
     
     if (notify) {
       this.notifyTopologyListeners();
@@ -261,11 +263,26 @@ export class MapManager {
   }
 
   public getTopologyMap(): TopologyMap {
-    return {
+    const map: TopologyMap = {
       map_name: '',
       points: this.getTopologyPoints(),
       routes: this.getTopologyRoutes(),
     };
+    
+    if (this.mapProperty) {
+      map.map_property = { ...this.mapProperty };
+    }
+    
+    return map;
+  }
+  
+  public getMapProperty(): { support_controllers?: string[]; support_goal_checkers?: string[] } | undefined {
+    return this.mapProperty;
+  }
+  
+  public updateMapProperty(property: { support_controllers?: string[]; support_goal_checkers?: string[] }): void {
+    this.mapProperty = property;
+    this.notifyTopologyListeners();
   }
 
   public addTopologyListener(listener: TopologyMapUpdateListener): void {
