@@ -137,6 +137,7 @@ export function MapView({ connection }: MapViewProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
   const [focusRobot, setFocusRobot] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const focusRobotRef = useRef(false);
   const followDistanceRef = useRef<number | null>(null);
   const initialFollowDistanceRef = useRef<number | null>(null);
@@ -555,6 +556,34 @@ export function MapView({ connection }: MapViewProps) {
     toast.success(`已发布导航目标: ${selectedTopoPoint.name}`);
   };
 
+  const handleFullscreenToggle = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (error) {
+      console.error('全屏操作失败:', error);
+      toast.error('全屏操作失败');
+    }
+  };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
   return (
     <div className="MapView">
       <div className="ViewControls">
@@ -581,6 +610,14 @@ export function MapView({ connection }: MapViewProps) {
           type="button"
         >
           ✏️
+        </button>
+        <button
+          className={`SettingsButton ${isFullscreen ? 'active' : ''}`}
+          onClick={handleFullscreenToggle}
+          title={isFullscreen ? '退出全屏' : '进入全屏'}
+          type="button"
+        >
+          {isFullscreen ? '🔳' : '🔲'}
         </button>
       </div>
       <div className="BottomControls">
