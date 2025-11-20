@@ -93,26 +93,100 @@ function parsePGMAndYAML(pgmData: Uint8Array, yamlContent: string): OccupancyGri
   let height = 0;
   let maxVal = 255;
 
-  for (let i = 0; i < pgmData.length; i++) {
-    if (pgmData[i] === 0x0A) {
-      const line = String.fromCharCode(...Array.from(pgmData.slice(headerEnd, i)));
-      if (line.startsWith('P5')) {
-        headerEnd = i + 1;
-      } else if (line.match(/^\d+ \d+$/)) {
-        const parts = line.split(' ');
-        width = parseInt(parts[0], 10);
-        height = parseInt(parts[1], 10);
-        headerEnd = i + 1;
-      } else if (line.match(/^\d+$/)) {
-        maxVal = parseInt(line, 10);
-        headerEnd = i + 1;
-        break;
+  const textDecoder = new TextDecoder('ascii');
+  let headerText = '';
+  let lineStart = 0;
+  let magicNumberParsed = false;
+  let dimensionsParsed = false;
+  let maxValParsed = false;
+  
+  for (let i = 0; i < Math.min(pgmData.length, 1024); i++) {
+    if (pgmData[i] === 0x0A || pgmData[i] === 0x0D) {
+      if (i > lineStart) {
+        const lineBytes = pgmData.slice(lineStart, i);
+        const line = textDecoder.decode(lineBytes).trim();
+        
+        if (line.length === 0) {
+          lineStart = (pgmData[i] === 0x0D && i + 1 < pgmData.length && pgmData[i + 1] === 0x0A) ? i + 2 : i + 1;
+          if (pgmData[i] === 0x0D && i + 1 < pgmData.length && pgmData[i + 1] === 0x0A) {
+            i++;
+          }
+          continue;
+        }
+        
+        if (line.startsWith('#')) {
+          headerText += line + '\n';
+          lineStart = (pgmData[i] === 0x0D && i + 1 < pgmData.length && pgmData[i + 1] === 0x0A) ? i + 2 : i + 1;
+          if (pgmData[i] === 0x0D && i + 1 < pgmData.length && pgmData[i + 1] === 0x0A) {
+            i++;
+          }
+          continue;
+        }
+        
+        if (!magicNumberParsed) {
+          if (line.startsWith('P5')) {
+            headerText += line + '\n';
+            magicNumberParsed = true;
+          } else {
+            console.warn('[mapImporter] Invalid PGM format, expected P5, got:', line);
+            break;
+          }
+        } else if (!dimensionsParsed) {
+          const parts = line.split(/\s+/).filter(p => p.length > 0);
+          if (parts.length >= 2) {
+            width = parseInt(parts[0], 10);
+            height = parseInt(parts[1], 10);
+            headerText += line + '\n';
+            dimensionsParsed = true;
+          } else {
+            console.warn('[mapImporter] Invalid dimensions line:', line);
+          }
+        } else if (!maxValParsed) {
+          maxVal = parseInt(line, 10);
+          if (!isNaN(maxVal)) {
+            headerText += line + '\n';
+            headerEnd = i + 1;
+            maxValParsed = true;
+            break;
+          } else {
+            console.warn('[mapImporter] Invalid max value line:', line);
+          }
+        }
+      }
+      
+      if (!maxValParsed) {
+        if (pgmData[i] === 0x0A) {
+          lineStart = i + 1;
+        } else if (pgmData[i] === 0x0D && i + 1 < pgmData.length && pgmData[i + 1] === 0x0A) {
+          lineStart = i + 2;
+          i++;
+        } else {
+          lineStart = i + 1;
+        }
       }
     }
   }
 
-  while (headerEnd < pgmData.length && pgmData[headerEnd] === 0x0A) {
+  while (headerEnd < pgmData.length && (pgmData[headerEnd] === 0x0A || pgmData[headerEnd] === 0x0D)) {
     headerEnd++;
+  }
+  
+  console.log('[mapImporter] PGM header parsed', {
+    headerText: headerText.trim(),
+    width,
+    height,
+    maxVal,
+    headerEnd,
+    totalLength: pgmData.length,
+    imageDataStart: headerEnd,
+    expectedImageSize: width * height
+  });
+  
+  if (width === 0 || height === 0) {
+    console.error('[mapImporter] Failed to parse PGM dimensions', {
+      headerText: headerText.trim(),
+      firstBytes: Array.from(pgmData.slice(0, 100)).map(b => String.fromCharCode(b)).join('')
+    });
   }
 
   const imageData = pgmData.slice(headerEnd);

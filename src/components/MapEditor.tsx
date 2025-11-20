@@ -1053,7 +1053,29 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       const { occupancyGrid, topologyMap } = await importMap(file);
 
       if (occupancyGrid) {
+        console.log('[MapEditor] Importing occupancy grid', {
+          hasInfo: !!occupancyGrid.info,
+          hasData: !!occupancyGrid.data,
+          width: occupancyGrid.info?.width,
+          height: occupancyGrid.info?.height,
+          dataLength: occupancyGrid.data?.length
+        });
         mapManagerRef.current.updateOccupancyGrid(occupancyGrid, true);
+        
+        setTimeout(() => {
+          const layer = occupancyGridLayerRef.current;
+          if (layer && 'renderMap' in layer) {
+            const currentMap = mapManagerRef.current.getOccupancyGrid();
+            console.log('[MapEditor] Manually triggering render after import', {
+              hasMap: !!currentMap,
+              hasLayer: !!layer
+            });
+            if (currentMap) {
+              (layer as any).renderMap(currentMap);
+            }
+          }
+        }, 100);
+        
         toast.success('栅格地图导入成功');
       }
 

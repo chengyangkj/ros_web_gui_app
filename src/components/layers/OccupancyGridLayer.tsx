@@ -100,7 +100,7 @@ export class OccupancyGridLayer extends BaseLayer {
     }
   }
   
-  private renderMap(msg: OccupancyGrid): void {
+  renderMap(msg: OccupancyGrid): void {
     console.log('[OccupancyGridLayer] renderMap called', { 
       hasInfo: !!msg.info, 
       hasData: !!msg.data,
