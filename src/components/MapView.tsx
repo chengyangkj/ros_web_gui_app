@@ -138,6 +138,8 @@ export function MapView({ connection }: MapViewProps) {
   const [showEditor, setShowEditor] = useState(false);
   const [focusRobot, setFocusRobot] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [mouseWorldPos, setMouseWorldPos] = useState<{ x: number; y: number } | null>(null);
+  const [robotPos, setRobotPos] = useState<{ x: number; y: number; theta: number } | null>(null);
   const focusRobotRef = useRef(false);
   const followDistanceRef = useRef<number | null>(null);
   const initialFollowDistanceRef = useRef<number | null>(null);
@@ -272,6 +274,29 @@ export function MapView({ connection }: MapViewProps) {
 
     canvas.addEventListener('click', handleClick);
 
+    const handleMouseMove = (event: MouseEvent) => {
+      if (!camera || !canvas) return;
+      
+      const rect = canvas.getBoundingClientRect();
+      const mouse = new THREE.Vector2();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+      const intersectPoint = new THREE.Vector3();
+      raycaster.ray.intersectPlane(plane, intersectPoint);
+      
+      setMouseWorldPos({ x: intersectPoint.x, y: intersectPoint.y });
+    };
+
+    const handleMouseLeave = () => {
+      setMouseWorldPos(null);
+    };
+
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('mouseleave', handleMouseLeave);
+
     console.log('[MapView] Creating LayerManager');
     const layerManager = new LayerManager(scene, connection);
     layerManagerRef.current = layerManager;
@@ -286,6 +311,33 @@ export function MapView({ connection }: MapViewProps) {
     };
 
     window.addEventListener('resize', handleResize);
+
+    const updateRobotPosition = () => {
+      const robotConfig = layerConfigsRef.current.robot;
+      if (!robotConfig) {
+        setRobotPos(null);
+        return;
+      }
+
+      const baseFrame = (robotConfig as any).baseFrame || 'base_center';
+      const mapFrame = (robotConfig as any).mapFrame || 'map';
+      const tf2js = TF2JS.getInstance();
+      const transform = tf2js.findTransform(mapFrame, baseFrame);
+      
+      if (transform) {
+        const robotEuler = new THREE.Euler();
+        robotEuler.setFromQuaternion(transform.rotation, 'XYZ');
+        const robotTheta = robotEuler.z;
+        
+        setRobotPos({
+          x: transform.translation.x,
+          y: transform.translation.y,
+          theta: robotTheta,
+        });
+      } else {
+        setRobotPos(null);
+      }
+    };
 
     let animationFrameId: number;
     const animate = () => {
@@ -356,6 +408,8 @@ export function MapView({ connection }: MapViewProps) {
           followDistanceRef.current = null;
           initialFollowDistanceRef.current = null;
         }
+        
+        updateRobotPosition();
         controls.update();
       }
       if (renderer && scene && camera) {
@@ -367,6 +421,8 @@ export function MapView({ connection }: MapViewProps) {
     return () => {
       window.removeEventListener('resize', handleResize);
       canvas.removeEventListener('click', handleClick);
+      canvas.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('mouseleave', handleMouseLeave);
       cancelAnimationFrame(animationFrameId);
       controls.dispose();
       layerManager.dispose();
@@ -741,6 +797,24 @@ export function MapView({ connection }: MapViewProps) {
         </div>
       )}
       <canvas ref={canvasRef} className="MapCanvas" />
+      <div className="CoordinateDisplay">
+        <div className="CoordinateRow">
+          <span className="CoordinateLabel">鼠标:</span>
+          <span className="CoordinateValue">
+            {mouseWorldPos
+              ? `X: ${mouseWorldPos.x.toFixed(3)}, Y: ${mouseWorldPos.y.toFixed(3)}`
+              : '-'}
+          </span>
+        </div>
+        <div className="CoordinateRow">
+          <span className="CoordinateLabel">机器人:</span>
+          <span className="CoordinateValue">
+            {robotPos
+              ? `X: ${robotPos.x.toFixed(3)}, Y: ${robotPos.y.toFixed(3)}, θ: ${robotPos.theta.toFixed(3)}`
+              : '-'}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

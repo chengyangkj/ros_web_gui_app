@@ -89,6 +89,8 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   const dragStartPointRef = useRef<TopoPoint | null>(null);
   const [supportControllers, setSupportControllers] = useState<string[]>(['FollowPath']);
   const [supportGoalCheckers, setSupportGoalCheckers] = useState<string[]>(['general_goal_checker']);
+  const [mouseWorldPos, setMouseWorldPos] = useState<{ x: number; y: number } | null>(null);
+  const [robotPos, setRobotPos] = useState<{ x: number; y: number; theta: number } | null>(null);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -162,6 +164,25 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
 
     window.addEventListener('resize', handleResize);
 
+    const updateRobotPosition = () => {
+      const tf2js = TF2JS.getInstance();
+      const transform = tf2js.findTransform('map', 'base_center');
+      
+      if (transform) {
+        const robotEuler = new THREE.Euler();
+        robotEuler.setFromQuaternion(transform.rotation, 'XYZ');
+        const robotTheta = robotEuler.z;
+        
+        setRobotPos({
+          x: transform.translation.x,
+          y: transform.translation.y,
+          theta: robotTheta,
+        });
+      } else {
+        setRobotPos(null);
+      }
+    };
+
     let animationFrameId: number;
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
@@ -177,6 +198,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       if (renderer && scene && camera) {
         renderer.render(scene, camera);
       }
+      updateRobotPosition();
     };
     animate();
 
@@ -614,6 +636,11 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   const handleCanvasMouseMove = (event: MouseEvent) => {
     updateBrushIndicatorFromNative(event);
     
+    const worldPos = getWorldPosition(event);
+    if (worldPos) {
+      setMouseWorldPos({ x: worldPos.x, y: worldPos.y });
+    }
+    
     if (isDrawing && (currentTool === 'brush' || currentTool === 'eraser') && occupancyGridLayerRef.current) {
       event.preventDefault();
       event.stopPropagation();
@@ -987,17 +1014,20 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     const mouseDownHandler = (e: MouseEvent) => handleCanvasMouseDown(e);
     const mouseMoveHandler = (e: MouseEvent) => handleCanvasMouseMove(e);
     const mouseUpHandler = () => handleCanvasMouseUp();
+    const mouseLeaveHandler = () => setMouseWorldPos(null);
 
     canvas.addEventListener('click', clickHandler);
     canvas.addEventListener('mousedown', mouseDownHandler);
     canvas.addEventListener('mousemove', mouseMoveHandler);
     canvas.addEventListener('mouseup', mouseUpHandler);
+    canvas.addEventListener('mouseleave', mouseLeaveHandler);
 
     return () => {
       canvas.removeEventListener('click', clickHandler);
       canvas.removeEventListener('mousedown', mouseDownHandler);
       canvas.removeEventListener('mousemove', mouseMoveHandler);
       canvas.removeEventListener('mouseup', mouseUpHandler);
+      canvas.removeEventListener('mouseleave', mouseLeaveHandler);
     };
   }, [currentTool, isDragging, isRotating, selectedPoint, routeStartPoint, lineStartPoint, isDrawing, brushSize]);
 
@@ -1632,6 +1662,24 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
           </div>
         </div>
       )}
+      <div className="CoordinateDisplay">
+        <div className="CoordinateRow">
+          <span className="CoordinateLabel">鼠标:</span>
+          <span className="CoordinateValue">
+            {mouseWorldPos
+              ? `X: ${mouseWorldPos.x.toFixed(3)}, Y: ${mouseWorldPos.y.toFixed(3)}`
+              : '-'}
+          </span>
+        </div>
+        <div className="CoordinateRow">
+          <span className="CoordinateLabel">机器人:</span>
+          <span className="CoordinateValue">
+            {robotPos
+              ? `X: ${robotPos.x.toFixed(3)}, Y: ${robotPos.y.toFixed(3)}, θ: ${robotPos.theta.toFixed(3)}`
+              : '-'}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

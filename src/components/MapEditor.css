@@ -191,3 +191,38 @@
   color: #ff6b6b;
 }
 
+.CoordinateDisplay {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  background-color: rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  padding: 12px 16px;
+  z-index: 10;
+  pointer-events: none;
+  user-select: none;
+  font-family: 'Courier New', monospace;
+}
+
+.CoordinateRow {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.CoordinateRow:last-child {
+  margin-bottom: 0;
+}
+
+.CoordinateLabel {
+  color: rgba(255, 255, 255, 0.7);
+  min-width: 60px;
+}
+
+.CoordinateValue {
+  color: white;
+  font-weight: 500;
+}
+
