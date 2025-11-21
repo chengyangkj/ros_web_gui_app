@@ -28,9 +28,64 @@
 
 ## 环境要求
 
-- Node.js >= 18.0.0
+- Node.js >= 20.19.0 或 >= 22.12.0
 - npm >= 9.0.0 或 yarn >= 1.22.0
 - ROS 1 或 ROS 2 系统（需要运行 rosbridge_server）
+
+## npm 安装教程
+
+### Windows
+
+1. **访问 Node.js 官网**
+   - 打开 [https://nodejs.org/](https://nodejs.org/)
+   - 下载 LTS 版本（推荐）
+
+2. **安装 Node.js**
+   - 运行下载的安装程序
+   - 按照向导完成安装（默认会包含 npm）
+
+3. **验证安装**
+   ```bash
+   node --version
+   npm --version
+   ```
+
+### macOS
+
+**使用 Homebrew（推荐）：**
+```bash
+brew install node
+```
+
+**或下载安装包：**
+- 访问 [https://nodejs.org/](https://nodejs.org/) 下载 macOS 安装包
+- 运行安装程序完成安装
+
+**验证安装：**
+```bash
+node --version
+npm --version
+```
+
+### Linux
+
+**Ubuntu/Debian：**
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
+
+**CentOS/RHEL：**
+```bash
+curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+sudo yum install -y nodejs
+```
+
+**验证安装：**
+```bash
+node --version
+npm --version
+```
 
 ## 安装步骤
 

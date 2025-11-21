@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build
+
+      - name: Extract version from tag
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Create release archive
+        run: |
+          cd dist
+          zip -r ../release.zip .
+          cd ..
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release.zip
+          name: Release v${{ steps.get_version.outputs.version }}
+          body: |
+            ## 版本 v${{ steps.get_version.outputs.version }}
+
+            ### 构建信息
+            - 构建时间: ${{ github.event.head_commit.timestamp }}
+            - 提交: ${{ github.sha }}
+
+            ### 下载
+            下载 `release.zip` 并解压后即可使用。
+
+            ### 使用说明
+            1. 解压 `release.zip`
+            2. 使用 Web 服务器托管解压后的文件（如 nginx、Apache 等）
+            3. 访问应用并连接到 ROS 系统
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
