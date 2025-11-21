@@ -5,6 +5,7 @@ import type { LayerConfigMap } from '../types/LayerConfig';
 import type { ColorModes } from '../utils/colorUtils';
 import { getAllUrdfConfigs, addUrdfConfig, deleteUrdfConfig, setCurrentUrdfConfig, type UrdfConfig } from '../utils/urdfStorage';
 import { saveUrdfFile, saveUrdfFiles, deleteUrdfFile } from '../utils/urdfFileStorage';
+import { TF2JS } from '../utils/tf2js';
 import './LayerSettingsPanel.css';
 
 interface LayerSettingsPanelProps {
@@ -16,13 +17,14 @@ interface LayerSettingsPanelProps {
 }
 
 export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefaults, onClose, onUrdfConfigChange }: LayerSettingsPanelProps) {
-  const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set(['urdf']));
+  const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set());
   const [editingFields, setEditingFields] = useState<Map<string, string>>(new Map());
   const [urdfConfigs, setUrdfConfigs] = useState<UrdfConfig[]>([]);
   const [currentUrdfId, setCurrentUrdfId] = useState<string | null>(null);
   const [showUrdfSelector, setShowUrdfSelector] = useState(false);
   const [urdfFileOptions, setUrdfFileOptions] = useState<{ files: string[], zip: JSZip | null, filesToSave: Map<string, string | ArrayBuffer>, fileTypes: ('urdf' | 'xacro')[] }>({ files: [], zip: null, filesToSave: new Map(), fileTypes: [] });
   const urdfFileInputRef = useRef<HTMLInputElement>(null);
+  const [tfFrames, setTfFrames] = useState<string[]>([]);
 
   const toggleLayer = (layerId: string) => {
     setExpandedLayers((prev) => {
@@ -59,7 +61,41 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
 
   useEffect(() => {
     loadUrdfConfigs();
+    updateTfFrames();
+    const interval = setInterval(updateTfFrames, 1000);
+    return () => clearInterval(interval);
   }, []);
+
+  const updateTfFrames = () => {
+    const tf2js = TF2JS.getInstance();
+    const frames = tf2js.getFrames();
+    setTfFrames(frames);
+  };
+
+  const handleTfFrameToggle = (layerId: string, frameId: string, enabled: boolean) => {
+    const config = layerConfigs[layerId];
+    if (!config) return;
+    
+    let enabledFrames = new Set((config as any).enabledFrames || []);
+    
+    // 如果当前 enabledFrames 为空（表示显示所有），且用户要取消某个坐标系
+    // 需要先将所有当前显示的坐标系添加到 enabledFrames 中
+    if (enabledFrames.size === 0 && !enabled) {
+      enabledFrames = new Set(tfFrames);
+      console.log('[LayerSettingsPanel] Initializing enabledFrames with all frames:', Array.from(enabledFrames));
+    }
+    
+    if (enabled) {
+      enabledFrames.add(frameId);
+    } else {
+      enabledFrames.delete(frameId);
+    }
+    
+    // 如果所有坐标系都被取消勾选，将 enabledFrames 设置为空数组（表示显示所有）
+    const newEnabledFrames = enabledFrames.size === tfFrames.length ? [] : Array.from(enabledFrames);
+    console.log('[LayerSettingsPanel] handleTfFrameToggle:', { frameId, enabled, enabledFramesSize: enabledFrames.size, tfFramesLength: tfFrames.length, newEnabledFrames });
+    onConfigChange(layerId, { enabledFrames: newEnabledFrames });
+  };
 
   const loadUrdfConfigs = () => {
     const allConfigs = getAllUrdfConfigs();
@@ -635,6 +671,53 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                         />
                         <span>{(config as any).showFrameNames !== false ? '是' : '否'}</span>
                       </label>
+                    </div>
+                  )}
+                  {layerId === 'tf' && (
+                    <div className="DetailRow" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+                      <span className="DetailLabel" style={{ marginBottom: '8px' }}>坐标系显示:</span>
+                      <div style={{ 
+                        width: '100%', 
+                        maxHeight: '200px', 
+                        overflowY: 'auto',
+                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                        borderRadius: '4px',
+                        padding: '8px',
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)'
+                      }}>
+                        {tfFrames.length === 0 ? (
+                          <div style={{ padding: '10px', textAlign: 'center', color: 'rgba(255, 255, 255, 0.6)', fontSize: '12px' }}>
+                            暂无坐标系
+                          </div>
+                        ) : (
+                          tfFrames.map((frameId) => {
+                            const enabledFrames = new Set((config as any).enabledFrames || []);
+                            const isEnabled = enabledFrames.size === 0 || enabledFrames.has(frameId);
+                            return (
+                              <label
+                                key={frameId}
+                                className="ToggleSwitch"
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  padding: '4px 0',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                <span style={{ fontSize: '12px', flex: 1 }}>{frameId}</span>
+                                <input
+                                  type="checkbox"
+                                  checked={isEnabled}
+                                  onChange={(e) => handleTfFrameToggle(layerId, frameId, e.target.checked)}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                                <span style={{ fontSize: '11px', marginLeft: '8px' }}>{isEnabled ? '显示' : '隐藏'}</span>
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

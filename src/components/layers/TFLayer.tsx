@@ -39,16 +39,20 @@ export class TFLayer extends BaseLayer {
 
     const frames = this.tf2js.getFrames();
     const currentFrameIds = new Set(this.frameGroups.keys());
+    const enabledFrames = new Set((this.config as any).enabledFrames || []);
 
     for (const frameId of frames) {
+      const shouldShow = enabledFrames.size === 0 || enabledFrames.has(frameId);
+      
       if (!currentFrameIds.has(frameId)) {
         this.createFrame(frameId);
-      } else {
-        const group = this.frameGroups.get(frameId);
-        if (group) {
-          group.visible = true;
-        }
       }
+      
+      const group = this.frameGroups.get(frameId);
+      if (group) {
+        group.visible = shouldShow;
+      }
+      
       this.updateFrameTransform(frameId);
     }
 
@@ -167,13 +171,31 @@ export class TFLayer extends BaseLayer {
   setConfig(config: LayerConfig): void {
     const oldEnabled = this.config.enabled;
     const oldShowFrameNames = (this.config as any).showFrameNames;
+    const oldEnabledFrames = new Set((this.config as any).enabledFrames || []);
     super.setConfig(config);
     
-    if (oldEnabled !== config.enabled) {
+    const newEnabledFrames = new Set((config as any).enabledFrames || []);
+    const enabledFramesChanged = oldEnabledFrames.size !== newEnabledFrames.size || 
+      Array.from(oldEnabledFrames).some(id => !newEnabledFrames.has(id)) ||
+      Array.from(newEnabledFrames).some(id => !oldEnabledFrames.has(id));
+    
+    console.log('[TFLayer] setConfig - enabledFrames:', {
+      old: Array.from(oldEnabledFrames),
+      new: Array.from(newEnabledFrames),
+      changed: enabledFramesChanged
+    });
+    
+    if (oldEnabled !== config.enabled || enabledFramesChanged) {
       for (const frameId of this.frameGroups.keys()) {
         const group = this.frameGroups.get(frameId);
         if (group) {
-          group.visible = config.enabled;
+          if (!config.enabled) {
+            group.visible = false;
+          } else {
+            const shouldShow = newEnabledFrames.size === 0 || newEnabledFrames.has(frameId);
+            console.log('[TFLayer] setConfig - frame:', frameId, 'shouldShow:', shouldShow, 'enabledFrames.size:', newEnabledFrames.size);
+            group.visible = shouldShow;
+          }
         }
       }
     }
