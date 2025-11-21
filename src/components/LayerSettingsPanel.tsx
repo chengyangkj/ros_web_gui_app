@@ -76,7 +76,7 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
     const config = layerConfigs[layerId];
     if (!config) return;
     
-    let enabledFrames = new Set((config as any).enabledFrames || []);
+    let enabledFrames = new Set((config.enabledFrames as string[] | undefined) || []);
     
     // 如果当前 enabledFrames 为空（表示显示所有），且用户要取消某个坐标系
     // 需要先将所有当前显示的坐标系添加到 enabledFrames 中
@@ -495,12 +495,12 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                       )}
                     </div>
                   )}
-                  {(config as any).colorMode !== undefined && (
+                  {(config.colorMode as ColorModes | undefined) !== undefined && (
                     <div className="DetailRow">
                       <span className="DetailLabel">颜色模式:</span>
                       <select
                         className="DetailSelect"
-                        value={(config as any).colorMode || 'map'}
+                        value={(config.colorMode as ColorModes | undefined) || 'map'}
                         onChange={(e) => handleFieldChange(layerId, 'colorMode', e.target.value as ColorModes)}
                       >
                         <option value="map">Map</option>
@@ -510,7 +510,7 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                       </select>
                     </div>
                   )}
-                  {(config as any).alpha !== undefined && (
+                  {(config.alpha as number | undefined) !== undefined && (
                     <div className="DetailRow">
                       <span className="DetailLabel">透明度:</span>
                       <input
@@ -519,31 +519,31 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                         min="0"
                         max="1"
                         step="0.1"
-                        value={(config as any).alpha ?? 1.0}
+                        value={(config.alpha as number | undefined) ?? 1.0}
                         onChange={(e) => handleFieldChange(layerId, 'alpha', parseFloat(e.target.value))}
                       />
                     </div>
                   )}
-                  {(config as any).height !== undefined && (
+                  {(config.height as number | undefined) !== undefined && (
                     <div className="DetailRow">
                       <span className="DetailLabel">高度:</span>
                       <input
                         className="DetailInput NumberInput"
                         type="number"
                         step="0.00001"
-                        value={(config as any).height ?? 0}
+                        value={(config.height as number | undefined) ?? 0}
                         onChange={(e) => handleFieldChange(layerId, 'height', parseFloat(e.target.value) || 0)}
                       />
                     </div>
                   )}
-                  {(config as any).targetFrame && (
+                  {(config.targetFrame as string | undefined) && (
                     <div className="DetailRow">
                       <span className="DetailLabel">目标坐标系:</span>
                       {isEditing(layerId, 'targetFrame') ? (
                         <input
                           className="DetailInput"
                           type="text"
-                          value={(config as any).targetFrame || ''}
+                          value={(config.targetFrame as string | undefined) || ''}
                           onChange={(e) => handleFieldChange(layerId, 'targetFrame', e.target.value)}
                           onBlur={() => setEditingFields((prev) => {
                             const next = new Map(prev);
@@ -559,19 +559,19 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                         />
                       ) : (
                         <span className="DetailValue Editable" onClick={() => startEditing(layerId, 'targetFrame')}>
-                          {(config as any).targetFrame}
+                          {config.targetFrame as string | undefined}
                         </span>
                       )}
                     </div>
                   )}
-                  {(config as any).baseFrame && (
+                  {(config.baseFrame as string | undefined) && (
                     <div className="DetailRow">
                       <span className="DetailLabel">基础坐标系:</span>
                       {isEditing(layerId, 'baseFrame') ? (
                         <input
                           className="DetailInput"
                           type="text"
-                          value={(config as any).baseFrame || ''}
+                          value={(config.baseFrame as string | undefined) || ''}
                           onChange={(e) => handleFieldChange(layerId, 'baseFrame', e.target.value)}
                           onBlur={() => setEditingFields((prev) => {
                             const next = new Map(prev);
@@ -587,19 +587,19 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                         />
                       ) : (
                         <span className="DetailValue Editable" onClick={() => startEditing(layerId, 'baseFrame')}>
-                          {(config as any).baseFrame}
+                          {config.baseFrame as string | undefined}
                         </span>
                       )}
                     </div>
                   )}
-                  {(config as any).mapFrame && (
+                  {(config.mapFrame as string | undefined) && (
                     <div className="DetailRow">
                       <span className="DetailLabel">地图坐标系:</span>
                       {isEditing(layerId, 'mapFrame') ? (
                         <input
                           className="DetailInput"
                           type="text"
-                          value={(config as any).mapFrame || ''}
+                          value={(config.mapFrame as string | undefined) || ''}
                           onChange={(e) => handleFieldChange(layerId, 'mapFrame', e.target.value)}
                           onBlur={() => setEditingFields((prev) => {
                             const next = new Map(prev);
@@ -620,7 +620,7 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                       )}
                     </div>
                   )}
-                  {(config as any).followZoomFactor !== undefined && (
+                  {(config.followZoomFactor as number | undefined) !== undefined && (
                     <div className="DetailRow">
                       <span className="DetailLabel">跟随缩放倍数:</span>
                       <input
@@ -629,24 +629,24 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                         min="0.01"
                         max="1"
                         step="0.01"
-                        value={(config as any).followZoomFactor ?? 0.3}
+                        value={(config.followZoomFactor as number | undefined) ?? 0.3}
                         onChange={(e) => handleFieldChange(layerId, 'followZoomFactor', parseFloat(e.target.value) || 0.3)}
                       />
                       <span className="DetailHint">（越小越放大，范围：0.01-1）</span>
                     </div>
                   )}
-                  {(config as any).color !== undefined && (
+                  {(config.color as number | undefined) !== undefined && (
                     <div className="DetailRow">
                       <span className="DetailLabel">颜色:</span>
                       <input
                         className="DetailInput ColorInput"
                         type="color"
-                        value={`#${((config as any).color ?? 0x0000ff).toString(16).padStart(6, '0')}`}
+                        value={`#${((config.color as number | undefined) ?? 0x0000ff).toString(16).padStart(6, '0')}`}
                         onChange={(e) => handleFieldChange(layerId, 'color', parseInt(e.target.value.substring(1), 16))}
                       />
                     </div>
                   )}
-                  {(config as any).pointSize !== undefined && (
+                  {(config.pointSize as number | undefined) !== undefined && (
                     <div className="DetailRow">
                       <span className="DetailLabel">点大小:</span>
                       <input
@@ -655,21 +655,21 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                         min="0.01"
                         max="2"
                         step="0.01"
-                        value={(config as any).pointSize ?? 0.3}
+                        value={(config.pointSize as number | undefined) ?? 0.3}
                         onChange={(e) => handleFieldChange(layerId, 'pointSize', parseFloat(e.target.value) || 0.3)}
                       />
                     </div>
                   )}
-                  {layerId === 'tf' && (config as any).showFrameNames !== undefined && (
+                  {layerId === 'tf' && (config.showFrameNames as boolean | undefined) !== undefined && (
                     <div className="DetailRow">
                       <span className="DetailLabel">显示frame名称:</span>
                       <label className="ToggleSwitch">
                         <input
                           type="checkbox"
-                          checked={(config as any).showFrameNames !== false}
+                          checked={(config.showFrameNames as boolean | undefined) !== false}
                           onChange={(e) => handleFieldChange(layerId, 'showFrameNames', e.target.checked)}
                         />
-                        <span>{(config as any).showFrameNames !== false ? '是' : '否'}</span>
+                        <span>{(config.showFrameNames as boolean | undefined) !== false ? '是' : '否'}</span>
                       </label>
                     </div>
                   )}
@@ -691,7 +691,7 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                           </div>
                         ) : (
                           tfFrames.map((frameId) => {
-                            const enabledFrames = new Set((config as any).enabledFrames || []);
+                            const enabledFrames = new Set((config.enabledFrames as string[] | undefined) || []);
                             const isEnabled = enabledFrames.size === 0 || enabledFrames.has(frameId);
                             return (
                               <label

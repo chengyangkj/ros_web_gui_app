@@ -69,7 +69,6 @@ function parsePGMAndYAML(pgmData: Uint8Array, yamlContent: string): OccupancyGri
   let originX = 0;
   let originY = 0;
   let originZ = 0;
-  let imagePath = '';
 
   for (const line of yamlLines) {
     const trimmed = line.trim();
@@ -83,8 +82,6 @@ function parsePGMAndYAML(pgmData: Uint8Array, yamlContent: string): OccupancyGri
         originY = coords[1] || 0;
         originZ = coords[2] || 0;
       }
-    } else if (trimmed.startsWith('image:')) {
-      imagePath = trimmed.split(':')[1].trim();
     }
   }
 

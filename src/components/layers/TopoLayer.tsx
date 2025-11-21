@@ -43,10 +43,10 @@ export class TopoLayer extends BaseLayer {
 
   constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
-    this.color = (config as any).color || 0x2196f3;
-    this.routeColor = (config as any).routeColor || 0x6b7280;
-    this.pointSize = (config as any).pointSize || 0.3;
-    this.count = (config as any).count || 2;
+    this.color = (config.color as number | undefined) || 0x2196f3;
+    this.routeColor = (config.routeColor as number | undefined) || 0x6b7280;
+    this.pointSize = (config.pointSize as number | undefined) || 0.3;
+    this.count = (config.count as number | undefined) || 2;
     
     // 从 MapManager 加载初始地图数据
     const mapManager = MapManager.getInstance();
@@ -118,7 +118,7 @@ export class TopoLayer extends BaseLayer {
     group.userData.topoPoint = point;
     group.add(centerCube);
 
-    const directionIndicator = this.createDirectionIndicator(point.theta);
+    const directionIndicator = this.createDirectionIndicator();
     directionIndicator.position.set(0, 0, 0);
     group.add(directionIndicator);
 
@@ -218,7 +218,7 @@ export class TopoLayer extends BaseLayer {
     return labelGroup;
   }
 
-  private createDirectionIndicator(_theta: number): THREE.Group {
+  private createDirectionIndicator(): THREE.Group {
     const indicatorGroup = new THREE.Group();
     
     const arcGeometry = new THREE.RingGeometry(
@@ -637,9 +637,9 @@ export class TopoLayer extends BaseLayer {
     const oldColor = this.color;
     const oldRouteColor = this.routeColor;
     const oldPointSize = this.pointSize;
-    this.color = (config as any).color || 0x2196f3;
-    this.routeColor = (config as any).routeColor || 0x6b7280;
-    this.pointSize = (config as any).pointSize || 0.3;
+    this.color = (config.color as number | undefined) || 0x2196f3;
+    this.routeColor = (config.routeColor as number | undefined) || 0x6b7280;
+    this.pointSize = (config.pointSize as number | undefined) || 0.3;
 
     if (oldColor !== this.color || oldRouteColor !== this.routeColor || oldPointSize !== this.pointSize) {
       const savedPoints = [...this.lastPoints];

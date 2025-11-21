@@ -7,6 +7,7 @@ import { TF2JS } from '../utils/tf2js';
 import { LayerManager } from './layers/LayerManager';
 import type { LayerConfigMap } from '../types/LayerConfig';
 import { TopoLayer } from './layers/TopoLayer';
+import { OccupancyGridLayer } from './layers/OccupancyGridLayer';
 import { MapManager } from '../utils/MapManager';
 import type { TopoPoint, Route, RouteInfo, TopologyMap } from '../utils/MapManager';
 import {
@@ -60,7 +61,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   const controlsRef = useRef<OrbitControls | null>(null);
   const layerManagerRef = useRef<LayerManager | null>(null);
   const topoLayerRef = useRef<TopoLayer | null>(null);
-  const occupancyGridLayerRef = useRef<any>(null);
+  const occupancyGridLayerRef = useRef<OccupancyGridLayer | null>(null);
   const [currentTool, setCurrentTool] = useState<EditTool>('move');
   const [brushSize, setBrushSize] = useState<number>(0.05);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -136,7 +137,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
     controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
     controls.mouseButtons.MIDDLE = THREE.MOUSE.ROTATE;
-    (controls as any).zoomToCursor = true;
+    (controls as OrbitControls & { zoomToCursor?: boolean }).zoomToCursor = true;
     
     // 固定为2D模式：禁用旋转，设置相机为俯视图
     controls.enableRotate = false;
@@ -243,7 +244,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         mapManager.initialize(connection);
         
         // 监听地图更新
-        const handleMapUpdate = (_map: TopologyMap) => {
+        const handleMapUpdate = () => {
           updateTopoMap();
         };
         mapManager.addTopologyListener(handleMapUpdate);
@@ -385,11 +386,9 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
                 setSelectedRoute(newRoute);
                 setSelectedPoint(null);
                 const topoLayer = layerManagerRef.current?.getLayer('topology');
-                if (topoLayer && 'setSelectedRoute' in topoLayer) {
-                  (topoLayer as any).setSelectedRoute(newRoute);
-                }
-                if (topoLayer && 'setSelectedPoint' in topoLayer) {
-                  (topoLayer as any).setSelectedPoint(null);
+                if (topoLayer instanceof TopoLayer) {
+                  topoLayer.setSelectedRoute(newRoute);
+                  topoLayer.setSelectedPoint(null);
                 }
                 clearPreviewLine();
                 toast.success(`已创建路线: ${routeStartPoint} -> ${point.name}`);
@@ -410,11 +409,9 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       setSelectedRoute(null);
       setRouteStartPoint(null);
       const topoLayer = layerManagerRef.current?.getLayer('topology');
-      if (topoLayer && 'setSelectedPoint' in topoLayer) {
-        (topoLayer as any).setSelectedPoint(null);
-      }
-      if (topoLayer && 'setSelectedRoute' in topoLayer) {
-        (topoLayer as any).setSelectedRoute(null);
+      if (topoLayer instanceof TopoLayer) {
+        topoLayer.setSelectedPoint(null);
+        topoLayer.setSelectedRoute(null);
       }
       clearPreviewLine();
       return;
@@ -429,11 +426,9 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
           setSelectedRoute(route);
           setSelectedPoint(null);
           const topoLayer = layerManagerRef.current?.getLayer('topology');
-          if (topoLayer && 'setSelectedRoute' in topoLayer) {
-            (topoLayer as any).setSelectedRoute(route);
-          }
-          if (topoLayer && 'setSelectedPoint' in topoLayer) {
-            (topoLayer as any).setSelectedPoint(null);
+          if (topoLayer instanceof TopoLayer) {
+            topoLayer.setSelectedRoute(route);
+            topoLayer.setSelectedPoint(null);
           }
           return;
         }
@@ -453,11 +448,9 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
             setSelectedPoint(pointData);
             setSelectedRoute(null);
             const topoLayer = layerManagerRef.current?.getLayer('topology');
-            if (topoLayer && 'setSelectedPoint' in topoLayer) {
-              (topoLayer as any).setSelectedPoint(pointData);
-            }
-            if (topoLayer && 'setSelectedRoute' in topoLayer) {
-              (topoLayer as any).setSelectedRoute(null);
+            if (topoLayer instanceof TopoLayer) {
+              topoLayer.setSelectedPoint(pointData);
+              topoLayer.setSelectedRoute(null);
             }
             return;
           }
@@ -493,8 +486,8 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       commandManagerRef.current.executeCommand(command);
       setSelectedPoint(newPoint);
       const topoLayer = layerManagerRef.current?.getLayer('topology');
-      if (topoLayer && 'setSelectedPoint' in topoLayer) {
-        (topoLayer as any).setSelectedPoint(newPoint);
+      if (topoLayer instanceof TopoLayer) {
+        topoLayer.setSelectedPoint(newPoint);
       }
       toast.success(`已添加点位: ${pointName}`);
     }
@@ -919,18 +912,18 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     setSupportGoalCheckers(Array.from(allGoalCheckers).sort());
     
     if (topoLayerRef.current) {
-      (topoLayerRef.current as any).update(topologyMap);
+      topoLayerRef.current.update(topologyMap);
       // 更新后恢复选中状态
       const currentSelectedPoint = selectedPointStateRef.current;
       const currentSelectedRoute = selectedRouteStateRef.current;
       if (currentSelectedPoint) {
         const currentPoint = mapManager.getTopologyPoint(currentSelectedPoint.name);
-        if (currentPoint && 'setSelectedPoint' in topoLayerRef.current) {
-          (topoLayerRef.current as any).setSelectedPoint(currentPoint);
+        if (currentPoint) {
+          topoLayerRef.current.setSelectedPoint(currentPoint);
         }
       }
-      if (currentSelectedRoute && 'setSelectedRoute' in topoLayerRef.current) {
-        (topoLayerRef.current as any).setSelectedRoute(currentSelectedRoute);
+      if (currentSelectedRoute) {
+        topoLayerRef.current.setSelectedRoute(currentSelectedRoute);
       }
     }
   };
@@ -1056,8 +1049,8 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     commandManagerRef.current.executeCommand(command);
     setSelectedPoint(updatedPoint);
     const topoLayer = layerManagerRef.current?.getLayer('topology');
-    if (topoLayer && 'setSelectedPoint' in topoLayer) {
-      (topoLayer as any).setSelectedPoint(updatedPoint);
+    if (topoLayer instanceof TopoLayer) {
+      topoLayer.setSelectedPoint(updatedPoint);
     }
   };
 
@@ -1123,8 +1116,8 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     commandManagerRef.current.executeCommand(command);
     setSelectedPoint(newPoint);
     const topoLayer = layerManagerRef.current?.getLayer('topology');
-    if (topoLayer && 'setSelectedPoint' in topoLayer) {
-      (topoLayer as any).setSelectedPoint(newPoint);
+    if (topoLayer instanceof TopoLayer) {
+      topoLayer.setSelectedPoint(newPoint);
     }
     toast.success(`已添加机器人当前位置为导航点: ${pointName}`);
   };
@@ -1197,8 +1190,8 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
               hasMap: !!currentMap,
               hasLayer: !!layer
             });
-            if (currentMap) {
-              (layer as any).renderMap(currentMap);
+            if (currentMap && layer instanceof OccupancyGridLayer) {
+              layer.renderMap(currentMap);
             }
           }
         }, 100);
@@ -1497,8 +1490,8 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
                   commandManagerRef.current.executeCommand(command);
                   setSelectedPoint(null);
                   const topoLayer = layerManagerRef.current?.getLayer('topology');
-                  if (topoLayer && 'setSelectedPoint' in topoLayer) {
-                    (topoLayer as any).setSelectedPoint(null);
+                  if (topoLayer instanceof TopoLayer) {
+                    topoLayer.setSelectedPoint(null);
                   }
                   toast.success(`已删除点位: ${selectedPoint.name}`);
                 }}
@@ -1575,8 +1568,8 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
                   commandManagerRef.current.executeCommand(command);
                   setSelectedRoute(null);
                   const topoLayer = layerManagerRef.current?.getLayer('topology');
-                  if (topoLayer && 'setSelectedRoute' in topoLayer) {
-                    (topoLayer as any).setSelectedRoute(null);
+                  if (topoLayer instanceof TopoLayer) {
+                    topoLayer.setSelectedRoute(null);
                   }
                   toast.success(`已删除路线: ${selectedRoute.from_point} -> ${selectedRoute.to_point}`);
                 }}

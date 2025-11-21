@@ -3,6 +3,7 @@ import { LoadingManager, LoaderUtils } from 'three';
 import URDFLoader from 'urdf-loader';
 import { BaseLayer } from './BaseLayer';
 import type { LayerConfig } from '../../types/LayerConfig';
+import type { RosbridgeConnection } from '../../utils/RosbridgeConnection';
 import { TF2JS } from '../../utils/tf2js';
 import { getCurrentUrdfConfig } from '../../utils/urdfStorage';
 import { loadUrdfFile, createBlobUrl, getAllUrdfFileNames, getFileUrl } from '../../utils/urdfFileStorage';
@@ -19,11 +20,11 @@ export class RobotLayer extends BaseLayer {
   private iconMesh: THREE.Mesh | null = null;
   private isLoadingUrdf: boolean = false;
 
-  constructor(scene: THREE.Scene, config: LayerConfig, connection: any = null) {
+  constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
     this.tf2js = TF2JS.getInstance();
-    this.baseFrame = (config as any).baseFrame || 'base_link';
-    this.mapFrame = (config as any).mapFrame || 'map';
+    this.baseFrame = (config.baseFrame as string | undefined) || 'base_link';
+    this.mapFrame = (config.mapFrame as string | undefined) || 'map';
     this.createRobot();
     this.updateRobotTransform();
     this.transformChangeUnsubscribe = this.tf2js.onTransformChange(() => {
@@ -337,14 +338,14 @@ export class RobotLayer extends BaseLayer {
       const loader = new URDFLoader(manager);
       loader.packages = packages;
       if (workingPath) {
-        (loader as any).workingPath = workingPath;
+        (loader as typeof loader & { workingPath?: string }).workingPath = workingPath;
       }
 
       console.log('[RobotLayer] loadUrdfModel - loading URDF from path:', urdfPath);
       await new Promise<void>((resolve, reject) => {
         loader.load(
           urdfPath,
-          (robot: any) => {
+          (robot: THREE.Group) => {
             this.isLoadingUrdf = false;
             if (!this.robotGroup) {
               reject(new Error('RobotGroup was disposed during loading'));
@@ -482,13 +483,13 @@ export class RobotLayer extends BaseLayer {
     }
   }
 
-  update(_message: unknown): void {
+  update(): void {
     // TF2JS 单例会自动处理消息更新，这里不需要处理
   }
 
   setConfig(config: LayerConfig): void {
     super.setConfig(config);
-    const cfg = config as any;
+    const cfg = config as LayerConfig & { baseFrame?: string; mapFrame?: string };
     if (cfg.baseFrame) {
       this.baseFrame = cfg.baseFrame;
     }

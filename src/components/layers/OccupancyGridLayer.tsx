@@ -41,13 +41,13 @@ export class OccupancyGridLayer extends BaseLayer {
   constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
     this.settings = {
-      colorMode: (config as any).colorMode || 'map',
-      minColor: (config as any).minColor || rgbaToCssString(DEFAULT_MIN_COLOR),
-      maxColor: (config as any).maxColor || rgbaToCssString(DEFAULT_MAX_COLOR),
-      unknownColor: (config as any).unknownColor || rgbaToCssString(DEFAULT_UNKNOWN_COLOR),
-      invalidColor: (config as any).invalidColor || rgbaToCssString(DEFAULT_INVALID_COLOR),
-      alpha: (config as any).alpha ?? 1.0,
-      height: (config as any).height ?? 0,
+      colorMode: (config.colorMode as ColorModes | undefined) || 'map',
+      minColor: (config.minColor as string | undefined) || rgbaToCssString(DEFAULT_MIN_COLOR),
+      maxColor: (config.maxColor as string | undefined) || rgbaToCssString(DEFAULT_MAX_COLOR),
+      unknownColor: (config.unknownColor as string | undefined) || rgbaToCssString(DEFAULT_UNKNOWN_COLOR),
+      invalidColor: (config.invalidColor as string | undefined) || rgbaToCssString(DEFAULT_INVALID_COLOR),
+      alpha: (config.alpha as number | undefined) ?? 1.0,
+      height: (config.height as number | undefined) ?? 0,
     };
     this.mapManager = MapManager.getInstance();
     
@@ -320,13 +320,13 @@ export class OccupancyGridLayer extends BaseLayer {
     const oldAlpha = this.settings.alpha;
     const oldColorMode = this.settings.colorMode;
     this.settings = {
-      colorMode: (config as any).colorMode || 'map',
-      minColor: (config as any).minColor || rgbaToCssString(DEFAULT_MIN_COLOR),
-      maxColor: (config as any).maxColor || rgbaToCssString(DEFAULT_MAX_COLOR),
-      unknownColor: (config as any).unknownColor || rgbaToCssString(DEFAULT_UNKNOWN_COLOR),
-      invalidColor: (config as any).invalidColor || rgbaToCssString(DEFAULT_INVALID_COLOR),
-      alpha: (config as any).alpha ?? 1.0,
-      height: (config as any).height ?? 0,
+      colorMode: (config.colorMode as ColorModes | undefined) || 'map',
+      minColor: (config.minColor as string | undefined) || rgbaToCssString(DEFAULT_MIN_COLOR),
+      maxColor: (config.maxColor as string | undefined) || rgbaToCssString(DEFAULT_MAX_COLOR),
+      unknownColor: (config.unknownColor as string | undefined) || rgbaToCssString(DEFAULT_UNKNOWN_COLOR),
+      invalidColor: (config.invalidColor as string | undefined) || rgbaToCssString(DEFAULT_INVALID_COLOR),
+      alpha: (config.alpha as number | undefined) ?? 1.0,
+      height: (config.height as number | undefined) ?? 0,
     };
     
     if (this.mesh && oldHeight !== this.settings.height) {

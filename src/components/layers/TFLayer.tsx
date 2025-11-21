@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { BaseLayer } from './BaseLayer';
 import type { LayerConfig } from '../../types/LayerConfig';
+import type { RosbridgeConnection } from '../../utils/RosbridgeConnection';
 import { TF2JS } from '../../utils/tf2js';
 
 export class TFLayer extends BaseLayer {
@@ -10,7 +11,7 @@ export class TFLayer extends BaseLayer {
   private updateInterval: ReturnType<typeof setInterval> | null = null;
   private axesSize: number = 0.1;
 
-  constructor(scene: THREE.Scene, config: LayerConfig, connection: any = null) {
+  constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
     this.tf2js = TF2JS.getInstance();
     this.updateFrames();
@@ -39,7 +40,7 @@ export class TFLayer extends BaseLayer {
 
     const frames = this.tf2js.getFrames();
     const currentFrameIds = new Set(this.frameGroups.keys());
-    const enabledFrames = new Set((this.config as any).enabledFrames || []);
+    const enabledFrames = new Set((this.config.enabledFrames as string[] | undefined) || []);
 
     for (const frameId of frames) {
       const shouldShow = enabledFrames.size === 0 || enabledFrames.has(frameId);
@@ -70,7 +71,7 @@ export class TFLayer extends BaseLayer {
     const axesHelper = new THREE.AxesHelper(this.axesSize);
     group.add(axesHelper);
 
-    const showFrameNames = (this.config as any).showFrameNames !== false;
+    const showFrameNames = (this.config.showFrameNames as boolean | undefined) !== false;
     if (showFrameNames) {
       const label = this.createLabel(frameId);
       label.position.set(0, 0, this.axesSize + 0.02);
@@ -164,17 +165,17 @@ export class TFLayer extends BaseLayer {
     });
   }
 
-  update(_message: unknown): void {
+  update(): void {
     // TF2JS 单例会自动处理消息更新，这里不需要处理
   }
 
   setConfig(config: LayerConfig): void {
     const oldEnabled = this.config.enabled;
-    const oldShowFrameNames = (this.config as any).showFrameNames;
-    const oldEnabledFrames = new Set((this.config as any).enabledFrames || []);
+    const oldShowFrameNames = (this.config.showFrameNames as boolean | undefined);
+    const oldEnabledFrames = new Set((this.config.enabledFrames as string[] | undefined) || []);
     super.setConfig(config);
     
-    const newEnabledFrames = new Set((config as any).enabledFrames || []);
+    const newEnabledFrames = new Set((config.enabledFrames as string[] | undefined) || []);
     const enabledFramesChanged = oldEnabledFrames.size !== newEnabledFrames.size || 
       Array.from(oldEnabledFrames).some(id => !newEnabledFrames.has(id)) ||
       Array.from(newEnabledFrames).some(id => !oldEnabledFrames.has(id));
@@ -200,8 +201,8 @@ export class TFLayer extends BaseLayer {
       }
     }
     
-    if (oldShowFrameNames !== (config as any).showFrameNames) {
-      const showFrameNames = (config as any).showFrameNames !== false;
+    if (oldShowFrameNames !== (config.showFrameNames as boolean | undefined)) {
+      const showFrameNames = (config.showFrameNames as boolean | undefined) !== false;
       const frames = this.tf2js.getFrames();
       for (const frameId of frames) {
         const group = this.frameGroups.get(frameId);

@@ -42,15 +42,6 @@ function App() {
     return false;
   }, []);
 
-  const handleDisconnect = () => {
-    if (connection) {
-      connection.disconnect();
-      setConnection(null);
-      setConnected(false);
-      window.history.pushState({}, '', '/');
-    }
-  };
-
   useEffect(() => {
     const wsUrl = getWsUrlFromUrl();
     if (wsUrl && !connected) {

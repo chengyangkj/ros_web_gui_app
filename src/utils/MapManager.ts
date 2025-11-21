@@ -134,8 +134,6 @@ export class MapManager {
           occupancyGrid = msg as OccupancyGrid;
         } else if (msg.map && msg.map.info && msg.map.data) {
           occupancyGrid = msg.map as OccupancyGrid;
-        } else if (msg.header && msg.info && msg.data) {
-          occupancyGrid = msg as OccupancyGrid;
         } else if (msg.bytes) {
           console.warn('[MapManager] Message has bytes but not parsed. This should not happen if MessageReader is working correctly.', {
             hasBytes: !!msg.bytes,

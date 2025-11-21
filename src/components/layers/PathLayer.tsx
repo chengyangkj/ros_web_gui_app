@@ -31,7 +31,7 @@ export class PathLayer extends BaseLayer {
 
   constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
-    this.color = (config as any).color || 0x00ff00;
+    this.color = (config.color as number | undefined) || 0x00ff00;
     console.log('[PathLayer] Constructor:', { topic: config.topic, hasConnection: !!connection, isConnected: connection?.isConnected(), color: this.color });
     if (config.topic) {
       this.subscribe(config.topic, this.getMessageType());

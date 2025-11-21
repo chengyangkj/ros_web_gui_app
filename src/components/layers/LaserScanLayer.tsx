@@ -31,7 +31,7 @@ export class LaserScanLayer extends BaseLayer {
   constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
     this.tf2js = TF2JS.getInstance();
-    this.targetFrame = (config as any).targetFrame || 'map';
+    this.targetFrame = (config.targetFrame as string | undefined) || 'map';
     if (config.topic) {
       this.subscribe(config.topic, this.getMessageType());
     }
