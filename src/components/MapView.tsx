@@ -10,9 +10,6 @@ import type { LayerConfigMap } from '../types/LayerConfig';
 import { LayerSettingsPanel } from './LayerSettingsPanel';
 import { MapEditor } from './MapEditor';
 import { loadLayerConfigs, saveLayerConfigs } from '../utils/layerConfigStorage';
-import { saveUrdfConfig, type UrdfConfig } from '../utils/urdfStorage';
-import { saveUrdfFile, saveUrdfFiles } from '../utils/urdfFileStorage';
-import JSZip from 'jszip';
 import './MapView.css';
 
 interface MapViewProps {
@@ -139,8 +136,6 @@ export function MapView({ connection }: MapViewProps) {
   const viewModeRef = useRef<'2d' | '3d'>('2d');
   const [showSettings, setShowSettings] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
-  const [showUrdfSelector, setShowUrdfSelector] = useState(false);
-  const [urdfFileOptions, setUrdfFileOptions] = useState<{ files: string[], zip: JSZip | null, filesToSave: Map<string, string | ArrayBuffer> }>({ files: [], zip: null, filesToSave: new Map() });
   const [focusRobot, setFocusRobot] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mouseWorldPos, setMouseWorldPos] = useState<{ x: number; y: number } | null>(null);
@@ -646,177 +641,6 @@ export function MapView({ connection }: MapViewProps) {
     }
   };
 
-  const urdfFileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleUrdfUpload = () => {
-    urdfFileInputRef.current?.click();
-  };
-
-  const extractMeshPaths = (urdfText: string): string[] => {
-    const meshPaths: string[] = [];
-    const meshRegex = /<mesh\s+filename=["']([^"']+)["']/gi;
-    let match;
-    while ((match = meshRegex.exec(urdfText)) !== null) {
-      meshPaths.push(match[1]);
-    }
-    return meshPaths;
-  };
-
-  const handleUrdfFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      let urdfFileName = '';
-      let urdfContent = '';
-      const filesToSave = new Map<string, string | ArrayBuffer>();
-
-      if (file.name.endsWith('.zip') || file.name.endsWith('.ZIP')) {
-        // 处理 ZIP 文件
-        toast.info('正在解压 ZIP 文件...');
-        const zip = await JSZip.loadAsync(file);
-        const fileNames = Object.keys(zip.files);
-        
-        // 查找 URDF 文件
-        const urdfFiles = fileNames.filter(name => 
-          name.toLowerCase().endsWith('.urdf') && !zip.files[name].dir
-        );
-        
-        if (urdfFiles.length === 0) {
-          toast.error('ZIP 文件中未找到 URDF 文件');
-          return;
-        }
-        
-        // 提取所有文件
-        for (const fileName of fileNames) {
-          const zipFile = zip.files[fileName];
-          if (!zipFile.dir) {
-            const content = await zipFile.async('uint8array');
-            const buffer = new ArrayBuffer(content.length);
-            new Uint8Array(buffer).set(content);
-            filesToSave.set(fileName, buffer);
-          }
-        }
-        
-        // 如果只有一个 URDF 文件，直接使用；否则让用户选择
-        if (urdfFiles.length === 1) {
-          urdfFileName = urdfFiles[0];
-          urdfContent = await zip.files[urdfFileName].async('string');
-          await saveUrdfFiles(filesToSave);
-          toast.success(`已解压 ${filesToSave.size} 个文件`);
-        } else {
-          // 多个 URDF 文件，显示选择对话框
-          setUrdfFileOptions({ files: urdfFiles, zip, filesToSave });
-          setShowUrdfSelector(true);
-          return;
-        }
-      } else if (file.name.endsWith('.urdf') || file.name.endsWith('.URDF')) {
-        // 处理单个 URDF 文件
-        urdfFileName = file.name;
-        urdfContent = await file.text();
-        await saveUrdfFile(urdfFileName, urdfContent);
-        
-        // 尝试提取 mesh 路径并提示用户
-        const meshPaths = extractMeshPaths(urdfContent);
-        if (meshPaths.length > 0) {
-          toast.warning(`检测到 ${meshPaths.length} 个 mesh 文件引用。建议上传包含所有文件的 ZIP 压缩包。`);
-        }
-      } else {
-        toast.error('请选择 URDF 文件或包含 URDF 的 ZIP 压缩包');
-        return;
-      }
-
-      // 解析 packages
-      const packages: Record<string, string> = {};
-      const packageMatches = urdfContent.matchAll(/file:\/\/\$\(find\s+([^)]+)\)/g);
-      for (const match of packageMatches) {
-        const packageName = match[1];
-        if (!packages[packageName]) {
-          packages[packageName] = '/urdf/';
-        }
-      }
-      
-      if (Object.keys(packages).length === 0) {
-        packages['nav_bringup'] = '/urdf/x2w/';
-      }
-
-      const config: UrdfConfig = {
-        packages,
-        fileName: urdfFileName,
-      };
-
-      saveUrdfConfig(config);
-      toast.success(`URDF 文件已保存: ${urdfFileName}`);
-      
-      // 重新加载机器人模型
-      const robotLayer = layerManagerRef.current?.getLayer('robot');
-      if (robotLayer && 'reloadUrdf' in robotLayer) {
-        (robotLayer as any).reloadUrdf();
-      }
-    } catch (error) {
-      console.error('上传 URDF 失败:', error);
-      toast.error('上传 URDF 失败: ' + (error instanceof Error ? error.message : '未知错误'));
-    } finally {
-      if (urdfFileInputRef.current) {
-        urdfFileInputRef.current.value = '';
-      }
-    }
-  };
-
-  const handleUrdfFileSelectConfirm = async (selectedFileName: string) => {
-    try {
-      const { zip, filesToSave } = urdfFileOptions;
-      if (!zip) return;
-
-      const urdfContent = await zip.files[selectedFileName].async('string');
-      
-      // 保存所有文件
-      await saveUrdfFiles(filesToSave);
-      toast.success(`已解压 ${filesToSave.size} 个文件`);
-
-      // 解析 packages
-      const packages: Record<string, string> = {};
-      const packageMatches = urdfContent.matchAll(/file:\/\/\$\(find\s+([^)]+)\)/g);
-      for (const match of packageMatches) {
-        const packageName = match[1];
-        if (!packages[packageName]) {
-          packages[packageName] = '/urdf/';
-        }
-      }
-      
-      if (Object.keys(packages).length === 0) {
-        packages['nav_bringup'] = '/urdf/x2w/';
-      }
-
-      const config: UrdfConfig = {
-        packages,
-        fileName: selectedFileName,
-      };
-
-      saveUrdfConfig(config);
-      toast.success(`URDF 文件已保存: ${selectedFileName}`);
-      
-      // 重新加载机器人模型
-      const robotLayer = layerManagerRef.current?.getLayer('robot');
-      if (robotLayer && 'reloadUrdf' in robotLayer) {
-        (robotLayer as any).reloadUrdf();
-      }
-
-      setShowUrdfSelector(false);
-      setUrdfFileOptions({ files: [], zip: null, filesToSave: new Map() });
-    } catch (error) {
-      console.error('处理 URDF 文件失败:', error);
-      toast.error('处理 URDF 文件失败: ' + (error instanceof Error ? error.message : '未知错误'));
-    }
-  };
-
-  const handleUrdfFileSelectCancel = () => {
-    setShowUrdfSelector(false);
-    setUrdfFileOptions({ files: [], zip: null, filesToSave: new Map() });
-    if (urdfFileInputRef.current) {
-      urdfFileInputRef.current.value = '';
-    }
-  };
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -865,22 +689,7 @@ export function MapView({ connection }: MapViewProps) {
         >
           {isFullscreen ? '🔳' : '🔲'}
         </button>
-        <button
-          className="SettingsButton"
-          onClick={handleUrdfUpload}
-          title="上传 URDF 文件"
-          type="button"
-        >
-          🤖
-        </button>
       </div>
-      <input
-        ref={urdfFileInputRef}
-        type="file"
-        accept=".urdf,.URDF,.zip,.ZIP"
-        style={{ display: 'none' }}
-        onChange={handleUrdfFileSelect}
-      />
       <div className="BottomControls">
         <button
           className={`FocusRobotButton ${focusRobot ? 'active' : ''}`}
@@ -900,92 +709,23 @@ export function MapView({ connection }: MapViewProps) {
             saveLayerConfigs(DEFAULT_LAYER_CONFIGS);
           }}
           onClose={() => setShowSettings(false)}
+          onUrdfConfigChange={async () => {
+            const robotLayer = layerManagerRef.current?.getLayer('robot');
+            if (robotLayer && 'reloadUrdf' in robotLayer) {
+              try {
+                await (robotLayer as any).reloadUrdf();
+              } catch (error) {
+                console.error('[MapView] Failed to reload URDF:', error);
+                toast.error('加载 URDF 模型失败: ' + (error instanceof Error ? error.message : '未知错误'));
+              }
+            }
+          }}
         />
       )}
       {showEditor && (
         <MapEditor
           connection={connection}
           onClose={() => setShowEditor(false)}
-        />
-      )}
-      {showUrdfSelector && (
-        <div className="UrdfSelectorDialog" style={{
-          position: 'fixed',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          backgroundColor: 'white',
-          padding: '20px',
-          borderRadius: '8px',
-          boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-          zIndex: 10000,
-          minWidth: '400px',
-          maxWidth: '600px',
-        }}>
-          <div style={{ marginBottom: '15px' }}>
-            <h3 style={{ margin: '0 0 10px 0' }}>选择 URDF 文件</h3>
-            <p style={{ margin: '0', color: '#666', fontSize: '14px' }}>
-              检测到多个 URDF 文件，请选择要使用的文件：
-            </p>
-          </div>
-          <div style={{ marginBottom: '15px', maxHeight: '300px', overflowY: 'auto' }}>
-            {urdfFileOptions.files.map((fileName) => (
-              <button
-                key={fileName}
-                onClick={() => handleUrdfFileSelectConfirm(fileName)}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  padding: '10px',
-                  marginBottom: '8px',
-                  textAlign: 'left',
-                  backgroundColor: '#f5f5f5',
-                  border: '1px solid #ddd',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#e8e8e8';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#f5f5f5';
-                }}
-                type="button"
-              >
-                {fileName}
-              </button>
-            ))}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-            <button
-              onClick={handleUrdfFileSelectCancel}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: '#f0f0f0',
-                border: '1px solid #ddd',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-              type="button"
-            >
-              取消
-            </button>
-          </div>
-        </div>
-      )}
-      {showUrdfSelector && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 9999,
-          }}
-          onClick={handleUrdfFileSelectCancel}
         />
       )}
       {selectedTopoPoint && (

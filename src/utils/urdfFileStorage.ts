@@ -48,16 +48,31 @@ export async function saveUrdfFile(fileName: string, content: string | ArrayBuff
 
 export async function loadUrdfFile(fileName: string): Promise<string | ArrayBuffer | null> {
   try {
+    console.log('[URDF File Storage] loadUrdfFile - loading file:', fileName);
     const db = await openDatabase();
     const transaction = db.transaction([STORE_NAME], 'readonly');
     const store = transaction.objectStore(STORE_NAME);
     return new Promise<string | ArrayBuffer | null>((resolve, reject) => {
       const request = store.get(fileName);
-      request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const result = request.result || null;
+        console.log('[URDF File Storage] loadUrdfFile - result:', result ? (typeof result === 'string' ? `string (${result.length} chars)` : `ArrayBuffer (${result.byteLength} bytes)`) : 'null');
+        if (!result) {
+          console.warn('[URDF File Storage] loadUrdfFile - file not found in IndexedDB:', fileName);
+          // 列出所有存在的文件以便调试
+          getAllUrdfFileNames().then(allFiles => {
+            console.log('[URDF File Storage] loadUrdfFile - available files in IndexedDB:', allFiles);
+          });
+        }
+        resolve(result);
+      };
+      request.onerror = () => {
+        console.error('[URDF File Storage] loadUrdfFile - error:', request.error);
+        reject(request.error);
+      };
     });
   } catch (error) {
-    console.error('Failed to load URDF file:', error);
+    console.error('[URDF File Storage] Failed to load URDF file:', error);
     return null;
   }
 }

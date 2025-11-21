@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import { LoadingManager } from 'three';
+import { LoadingManager, LoaderUtils } from 'three';
 import URDFLoader from 'urdf-loader';
 import { BaseLayer } from './BaseLayer';
 import type { LayerConfig } from '../../types/LayerConfig';
 import { TF2JS } from '../../utils/tf2js';
-import { loadUrdfConfig } from '../../utils/urdfStorage';
+import { getCurrentUrdfConfig } from '../../utils/urdfStorage';
 import { loadUrdfFile, createBlobUrl, getAllUrdfFileNames, getFileUrl } from '../../utils/urdfFileStorage';
 import robotSvgUrl from '../../assets/robot.svg?url';
 
@@ -88,10 +88,12 @@ export class RobotLayer extends BaseLayer {
     });
   }
 
-  private async createCustomLoadingManager(): Promise<LoadingManager> {
+  private async createCustomLoadingManager(packages?: Record<string, string>): Promise<LoadingManager> {
     const manager = new LoadingManager();
     const savedFileNames = await getAllUrdfFileNames();
     const fileMap = new Map<string, string>();
+    const missingPackages = new Set<string>();
+    const missingFiles = new Set<string>();
     
     // 预加载所有文件的 blob URL
     for (const fileName of savedFileNames) {
@@ -104,29 +106,161 @@ export class RobotLayer extends BaseLayer {
       }
     }
     
+    // 设置错误处理
+    manager.onError = () => {
+      if (missingPackages.size > 0) {
+        const error = new Error(`以下包未在配置中找到: ${Array.from(missingPackages).join(', ')}`);
+        console.error('[RobotLayer] LoadingManager error:', error.message);
+        throw error;
+      }
+      if (missingFiles.size > 0) {
+        const error = new Error(`以下文件未找到: ${Array.from(missingFiles).join(', ')}`);
+        console.error('[RobotLayer] LoadingManager error:', error.message);
+        throw error;
+      }
+    };
+    
     // 设置 URL 修改器，尝试从 IndexedDB 加载文件
     manager.setURLModifier((url: string) => {
-      // 如果是 blob URL，直接返回
-      if (url.startsWith('blob:')) {
-        return url;
-      }
+      console.log('[RobotLayer] URL modifier - original URL:', url);
       
-      // 尝试匹配文件名
-      const urlPath = url.split('/').pop() || url;
-      if (fileMap.has(urlPath)) {
-        return fileMap.get(urlPath)!;
-      }
+      // 处理包含 file://$(find ...) 的 URL（即使是以 blob: 开头）
+      let processedUrl = url;
       
-      // 尝试匹配完整路径
-      const normalizedUrl = url.replace(/\\/g, '/');
-      for (const [fileName, blobUrl] of fileMap.entries()) {
-        if (normalizedUrl.includes(fileName) || fileName.includes(urlPath)) {
-          return blobUrl;
+      // 如果 URL 包含 $(find ...)，需要处理（可能包含 file:// 前缀，也可能没有）
+      if (url.includes('$(find')) {
+        // 提取 $(find package_name)/... 部分（可能前面有 file://）
+        const fileMatch = url.match(/(?:file:\/\/)?\$\(find\s+([^)]+)\)([^"']*)/);
+        if (fileMatch) {
+          const packageName = fileMatch[1];
+          const relativePath = fileMatch[2]; // 例如：/urdf/x2w/meshes/base_w.stl
+          
+          // 如果包名不在配置中，记录错误
+          if (!packages || !packages[packageName]) {
+            missingPackages.add(packageName);
+            console.error(`[RobotLayer] URL modifier - 包 "${packageName}" 未在 URDF 配置中找到`);
+            // 返回一个无效的URL，让LoadingManager触发onError
+            return `error://package-not-found/${packageName}`;
+          }
+          const packagePath = packages[packageName];
+          
+          // 构建完整路径：packagePath + relativePath
+          // 例如：/urdf/x2w/ + /urdf/x2w/meshes/base_w.stl -> /urdf/x2w/urdf/x2w/meshes/base_w.stl
+          // 但实际上 relativePath 可能已经包含了包路径，所以我们需要提取实际的文件路径
+          // 例如：/urdf/x2w/meshes/base_w.stl -> meshes/base_w.stl 或 x2w/meshes/base_w.stl
+          const pathParts = relativePath.split('/').filter(p => p.length > 0);
+          console.log('[RobotLayer] URL modifier - package:', packageName, 'path:', packagePath, 'relativePath:', relativePath, 'pathParts:', pathParts);
+          
+          // 从相对路径中提取实际的文件路径
+          // 例如：/urdf/x2w/meshes/base_w.stl -> x2w/meshes/base_w.stl 或 meshes/base_w.stl
+          let searchPath = relativePath.replace(/^\/+/, '');
+          // 如果路径以 urdf/ 开头，去掉它
+          if (searchPath.startsWith('urdf/')) {
+            searchPath = searchPath.substring(5);
+          }
+          
+          console.log('[RobotLayer] URL modifier - searchPath:', searchPath);
+          console.log('[RobotLayer] URL modifier - available files:', Array.from(fileMap.keys()));
+          
+          // 从后往前匹配路径部分
+          const searchParts = searchPath.split('/').filter(p => p.length > 0);
+          console.log('[RobotLayer] URL modifier - searchParts:', searchParts);
+          
+          // 先尝试最长的匹配（例如：x2w/meshes/base_w.stl）
+          for (let len = searchParts.length; len >= 1; len--) {
+            const partialPath = searchParts.slice(-len).join('/');
+            console.log('[RobotLayer] URL modifier - trying to match:', partialPath, `(${len} parts)`);
+            
+            for (const [fileName, blobUrl] of fileMap.entries()) {
+              // 优先检查文件名是否以这个部分路径结尾（精确匹配）
+              if (fileName.endsWith(partialPath)) {
+                console.log('[RobotLayer] URL modifier - found end match:', fileName, 'for', partialPath);
+                return blobUrl;
+              }
+            }
+          }
+          
+          // 如果精确匹配失败，尝试包含匹配
+          for (let len = searchParts.length; len >= 1; len--) {
+            const partialPath = searchParts.slice(-len).join('/');
+            for (const [fileName, blobUrl] of fileMap.entries()) {
+              if (fileName.includes(partialPath)) {
+                console.log('[RobotLayer] URL modifier - found contains match:', fileName, 'for', partialPath);
+                return blobUrl;
+              }
+            }
+          }
+          
+          console.warn('[RobotLayer] URL modifier - no match found for searchPath:', searchPath);
         }
       }
       
-      // 如果找不到，返回原始 URL
-      return url;
+      // 如果是纯 blob URL（不包含 file://），直接返回
+      if (url.startsWith('blob:') && !url.includes('file://')) {
+        return url;
+      }
+      
+      // 移除 file:// 前缀（如果还有）
+      processedUrl = processedUrl.replace(/^file:\/\//, '');
+      
+      // 尝试直接匹配处理后的 URL
+      if (fileMap.has(processedUrl)) {
+        console.log('[RobotLayer] URL modifier - found direct match:', processedUrl);
+        return fileMap.get(processedUrl)!;
+      }
+      
+      // 尝试匹配文件名
+      const urlPath = processedUrl.split('/').pop() || processedUrl;
+      if (fileMap.has(urlPath)) {
+        console.log('[RobotLayer] URL modifier - found filename match:', urlPath);
+        return fileMap.get(urlPath)!;
+      }
+      
+      // 尝试匹配路径的末尾部分（从后往前匹配）
+      const normalizedUrl = processedUrl.replace(/\\/g, '/').replace(/^\/+/, '');
+      const urlParts = normalizedUrl.split('/').filter(p => p.length > 0);
+      
+      // 从后往前尝试匹配，逐步增加路径部分
+      // 例如：file://$(find nav_bringup)/urdf/x2w/meshes/base_collider.stl
+      // 应该匹配到：x2w/meshes/base_collider.stl 或 meshes/base_collider.stl
+      // 先尝试最长的匹配，然后逐步缩短
+      for (let len = urlParts.length; len >= 1; len--) {
+        const partialPath = urlParts.slice(-len).join('/');
+        console.log('[RobotLayer] URL modifier - trying to match:', partialPath, `(${len} parts)`);
+        
+        for (const [fileName, blobUrl] of fileMap.entries()) {
+          // 优先检查文件名是否以这个部分路径结尾（精确匹配）
+          if (fileName.endsWith(partialPath)) {
+            console.log('[RobotLayer] URL modifier - found end match:', fileName, 'for', partialPath);
+            return blobUrl;
+          }
+        }
+      }
+      
+      // 如果精确匹配失败，尝试包含匹配
+      for (let len = urlParts.length; len >= 1; len--) {
+        const partialPath = urlParts.slice(-len).join('/');
+        for (const [fileName, blobUrl] of fileMap.entries()) {
+          // 检查文件名是否包含这个部分路径
+          if (fileName.includes(partialPath)) {
+            console.log('[RobotLayer] URL modifier - found contains match:', fileName, 'for', partialPath);
+            return blobUrl;
+          }
+        }
+      }
+      
+      // 如果还是找不到，尝试只匹配文件名（最后一部分）
+      const fileNameOnly = urlParts[urlParts.length - 1];
+      if (fileNameOnly && fileMap.has(fileNameOnly)) {
+        console.log('[RobotLayer] URL modifier - found filename match:', fileNameOnly);
+        return fileMap.get(fileNameOnly)!;
+      }
+      
+      // 如果找不到，记录错误
+      missingFiles.add(url);
+      console.error('[RobotLayer] URL modifier - 无法在已上传的文件中找到匹配的资源:', url, 'processed:', processedUrl);
+      // 返回一个无效的URL，让LoadingManager触发onError
+      return `error://file-not-found/${url}`;
     });
     
     return manager;
@@ -140,28 +274,73 @@ export class RobotLayer extends BaseLayer {
     this.isLoadingUrdf = true;
 
     try {
-      const savedConfig = loadUrdfConfig();
-      let urdfPath = '/urdf/x2w/x2w.urdf';
-      let packages: Record<string, string> = {
-        'nav_bringup': '/urdf/x2w/',
-      };
-
-      if (savedConfig) {
-        // 从 IndexedDB 加载文件内容并创建新的 blob URL
-        const fileContent = await loadUrdfFile(savedConfig.fileName);
-        if (fileContent && typeof fileContent === 'string') {
-          urdfPath = createBlobUrl(fileContent, 'application/xml');
-        } else {
-          console.warn('[RobotLayer] Failed to load URDF file from IndexedDB:', savedConfig.fileName);
-          // 如果加载失败，使用默认路径
-        }
-        packages = savedConfig.packages;
+      console.log('[RobotLayer] loadUrdfModel - starting');
+      const savedConfig = getCurrentUrdfConfig();
+      console.log('[RobotLayer] loadUrdfModel - savedConfig:', savedConfig);
+      
+      // 如果没有保存的配置，使用 SVG 图标
+      if (!savedConfig) {
+        console.log('[RobotLayer] loadUrdfModel - no saved config, falling back to SVG icon');
+        this.isLoadingUrdf = false;
+        this.createSVGIcon();
+        return;
       }
 
-      const manager = await this.createCustomLoadingManager();
+
+      console.log('[RobotLayer] loadUrdfModel - using saved config:', savedConfig);
+      console.log('[RobotLayer] loadUrdfModel - config fileName:', savedConfig.fileName);
+      
+      // 检查包配置
+      if (!savedConfig.packages || Object.keys(savedConfig.packages).length === 0) {
+        const error = new Error('URDF 配置中未找到任何包引用，无法加载模型');
+        console.error('[RobotLayer]', error.message);
+        this.isLoadingUrdf = false;
+        throw error;
+      }
+      
+      // 从 IndexedDB 加载文件内容
+      const fileContent = await loadUrdfFile(savedConfig.fileName);
+      console.log('[RobotLayer] loadUrdfModel - fileContent loaded:', fileContent ? (typeof fileContent === 'string' ? `string (${fileContent.length} chars)` : `ArrayBuffer (${fileContent.byteLength} bytes)`) : 'null');
+      
+      // 如果加载失败，检查是否是文件不存在的问题
+      if (!fileContent) {
+        // 列出所有可用的文件以便调试
+        const allFiles = await getAllUrdfFileNames();
+        console.error('[RobotLayer] Failed to load URDF file from IndexedDB:', savedConfig.fileName);
+        console.error('[RobotLayer] Available files in IndexedDB:', allFiles);
+        
+        
+        const error = new Error(`Failed to load URDF file from IndexedDB: ${savedConfig.fileName}. File may have been deleted or never saved.`);
+        console.error('[RobotLayer]', error.message);
+        this.isLoadingUrdf = false;
+        throw error;
+      }
+      
+      // 将 ArrayBuffer 转换为字符串（如果必要）
+      let urdfContent: string;
+      if (typeof fileContent === 'string') {
+        urdfContent = fileContent;
+      } else {
+        // ArrayBuffer 转字符串
+        const decoder = new TextDecoder('utf-8');
+        urdfContent = decoder.decode(fileContent);
+        console.log('[RobotLayer] loadUrdfModel - converted ArrayBuffer to string, length:', urdfContent.length);
+      }
+
+      // URDF 文件直接使用
+      console.log('[RobotLayer] loadUrdfModel - using URDF file directly');
+      const urdfPath = createBlobUrl(urdfContent, 'application/xml');
+      const workingPath = LoaderUtils.extractUrlBase(urdfPath);
+      const packages = savedConfig.packages;
+
+      const manager = await this.createCustomLoadingManager(packages);
       const loader = new URDFLoader(manager);
       loader.packages = packages;
+      if (workingPath) {
+        (loader as any).workingPath = workingPath;
+      }
 
+      console.log('[RobotLayer] loadUrdfModel - loading URDF from path:', urdfPath);
       await new Promise<void>((resolve, reject) => {
         loader.load(
           urdfPath,
@@ -228,19 +407,31 @@ export class RobotLayer extends BaseLayer {
       });
     } catch (error) {
       this.isLoadingUrdf = false;
-      throw error;
+      // 确保错误信息被正确传递
+      if (error instanceof Error) {
+        console.error('[RobotLayer] loadUrdfModel failed:', error.message);
+        throw error;
+      } else {
+        const errorMsg = String(error);
+        console.error('[RobotLayer] loadUrdfModel failed:', errorMsg);
+        throw new Error(errorMsg);
+      }
     }
   }
 
-  public reloadUrdf(): void {
+  public async reloadUrdf(): Promise<void> {
     if (this.urdfRobot && this.robotGroup) {
       this.robotGroup.remove(this.urdfRobot);
       this.disposeObject3D(this.urdfRobot);
       this.urdfRobot = null;
     }
-    this.loadUrdfModel().catch((error) => {
+    try {
+      await this.loadUrdfModel();
+    } catch (error) {
       console.error('[RobotLayer] Failed to reload URDF model:', error);
-    });
+      this.createSVGIcon();
+      throw error;
+    }
   }
 
   private createSVGIcon(): void {

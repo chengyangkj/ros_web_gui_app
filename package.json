@@ -22,7 +22,8 @@
     "react-toastify": "^11.0.5",
     "roslib": "^1.4.1",
     "three": "^0.181.1",
-    "urdf-loader": "^0.12.5"
+    "urdf-loader": "^0.12.5",
+    "xacro-parser": "^0.3.11"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
