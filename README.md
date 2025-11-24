@@ -88,6 +88,32 @@ ros2 run rosbridge_server rosbridge_websocket
 
 ## 使用说明
 
+### 项目部署
+
+#### 从 Release 下载编译产物
+
+1. 访问项目的 [Releases 页面](https://github.com/chengyangkj/ros_web_gui_app/releases)
+2. 下载最新版本的 `dist.zip` 或 `dist.tar.gz` 压缩包
+3. 解压到本地目录，例如：
+   ```bash
+   unzip dist.zip -d ros_web_gui_app
+   cd ros_web_gui_app
+   ```
+
+#### 启动简易服务器
+
+使用 Python 内置的 HTTP 服务器启动：
+
+```bash
+python3 -m http.server 8001
+```
+
+服务器启动后，在浏览器中访问：
+- **本地访问**：`http://localhost:8001`
+- **局域网访问**：`http://<服务器IP>:8001`
+
+> **注意**：Python 的 `http.server` 仅适用于开发和测试环境。生产环境建议使用 Nginx、Apache 等专业的 Web 服务器。
+
 ### 连接 ROS 系统
 
 1. 启动应用后，在连接页面输入：

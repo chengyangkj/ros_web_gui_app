@@ -55,11 +55,19 @@ export class CommandManager {
 }
 
 export class AddPointCommand implements Command {
+  private mapManager: any;
+  private point: TopoPoint;
+  private onUpdate: () => void;
+
   constructor(
-    private mapManager: any,
-    private point: TopoPoint,
-    private onUpdate: () => void
-  ) {}
+    mapManager: any,
+    point: TopoPoint,
+    onUpdate: () => void
+  ) {
+    this.mapManager = mapManager;
+    this.point = point;
+    this.onUpdate = onUpdate;
+  }
 
   execute(): void {
     this.mapManager.setTopologyPoint(this.point);
@@ -78,12 +86,18 @@ export class AddPointCommand implements Command {
 
 export class DeletePointCommand implements Command {
   private routesToRestore: Route[] = [];
+  private mapManager: any;
+  private point: TopoPoint;
+  private onUpdate: () => void;
 
   constructor(
-    private mapManager: any,
-    private point: TopoPoint,
-    private onUpdate: () => void
+    mapManager: any,
+    point: TopoPoint,
+    onUpdate: () => void
   ) {
+    this.mapManager = mapManager;
+    this.point = point;
+    this.onUpdate = onUpdate;
     const routes = this.mapManager.getTopologyRoutes();
     this.routesToRestore = routes.filter(
       (r: Route) => r.from_point === point.name || r.to_point === point.name
@@ -109,12 +123,22 @@ export class DeletePointCommand implements Command {
 }
 
 export class ModifyPointCommand implements Command {
+  private mapManager: any;
+  private oldPoint: TopoPoint;
+  private newPoint: TopoPoint;
+  private onUpdate: () => void;
+
   constructor(
-    private mapManager: any,
-    private oldPoint: TopoPoint,
-    private newPoint: TopoPoint,
-    private onUpdate: () => void
-  ) {}
+    mapManager: any,
+    oldPoint: TopoPoint,
+    newPoint: TopoPoint,
+    onUpdate: () => void
+  ) {
+    this.mapManager = mapManager;
+    this.oldPoint = oldPoint;
+    this.newPoint = newPoint;
+    this.onUpdate = onUpdate;
+  }
 
   execute(): void {
     const oldName = this.oldPoint.name !== this.newPoint.name ? this.oldPoint.name : undefined;
@@ -134,11 +158,19 @@ export class ModifyPointCommand implements Command {
 }
 
 export class AddRouteCommand implements Command {
+  private mapManager: any;
+  private route: Route;
+  private onUpdate: () => void;
+
   constructor(
-    private mapManager: any,
-    private route: Route,
-    private onUpdate: () => void
-  ) {}
+    mapManager: any,
+    route: Route,
+    onUpdate: () => void
+  ) {
+    this.mapManager = mapManager;
+    this.route = route;
+    this.onUpdate = onUpdate;
+  }
 
   execute(): void {
     this.mapManager.setTopologyRoute(this.route);
@@ -156,11 +188,19 @@ export class AddRouteCommand implements Command {
 }
 
 export class DeleteRouteCommand implements Command {
+  private mapManager: any;
+  private route: Route;
+  private onUpdate: () => void;
+
   constructor(
-    private mapManager: any,
-    private route: Route,
-    private onUpdate: () => void
-  ) {}
+    mapManager: any,
+    route: Route,
+    onUpdate: () => void
+  ) {
+    this.mapManager = mapManager;
+    this.route = route;
+    this.onUpdate = onUpdate;
+  }
 
   execute(): void {
     this.mapManager.deleteTopologyRoute(this.route);
@@ -178,12 +218,22 @@ export class DeleteRouteCommand implements Command {
 }
 
 export class ModifyRouteCommand implements Command {
+  private mapManager: any;
+  private oldRoute: Route;
+  private newRoute: Route;
+  private onUpdate: () => void;
+
   constructor(
-    private mapManager: any,
-    private oldRoute: Route,
-    private newRoute: Route,
-    private onUpdate: () => void
-  ) {}
+    mapManager: any,
+    oldRoute: Route,
+    newRoute: Route,
+    onUpdate: () => void
+  ) {
+    this.mapManager = mapManager;
+    this.oldRoute = oldRoute;
+    this.newRoute = newRoute;
+    this.onUpdate = onUpdate;
+  }
 
   execute(): void {
     this.mapManager.setTopologyRoute(this.newRoute);
@@ -207,11 +257,19 @@ export interface GridCellChange {
 }
 
 export class ModifyGridCommand implements Command {
+  private occupancyGridLayer: any;
+  private changes: GridCellChange[];
+  private onUpdate: () => void;
+
   constructor(
-    private occupancyGridLayer: any,
-    private changes: GridCellChange[],
-    private onUpdate: () => void
-  ) {}
+    occupancyGridLayer: any,
+    changes: GridCellChange[],
+    onUpdate: () => void
+  ) {
+    this.occupancyGridLayer = occupancyGridLayer;
+    this.changes = changes;
+    this.onUpdate = onUpdate;
+  }
 
   execute(): void {
     if (!this.occupancyGridLayer || !this.occupancyGridLayer.lastData) {
