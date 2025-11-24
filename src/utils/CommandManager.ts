@@ -1,6 +1,4 @@
 import type { TopoPoint, Route } from './MapManager';
-import { MapManager } from './MapManager';
-import type { OccupancyGridLayer } from '../components/layers/OccupancyGridLayer';
 
 export interface Command {
   execute(): void;
