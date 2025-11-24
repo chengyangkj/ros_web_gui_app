@@ -62,7 +62,7 @@ export class LayerManager {
         this.createLayer(layerId, config);
       } else {
         const layer = this.layers.get(layerId)!;
-        const oldConnection = layer.connection;
+        const oldConnection = layer.getConnection();
         if (oldConnection !== this.connection) {
           console.log('[LayerManager] Updating connection for layer:', layerId);
           layer.setConnection(this.connection);

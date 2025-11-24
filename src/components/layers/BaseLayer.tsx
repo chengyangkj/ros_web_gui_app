@@ -111,6 +111,10 @@ export abstract class BaseLayer implements LayerRenderable {
     return this.config;
   }
 
+  getConnection(): RosbridgeConnection | null {
+    return this.connection;
+  }
+
   setConnection(connection: RosbridgeConnection): void {
     console.log(`[${this.constructor.name}] setConnection:`, { 
       isConnected: connection.isConnected(), 

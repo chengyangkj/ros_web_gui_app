@@ -9,7 +9,7 @@ import type { LayerConfigMap } from '../types/LayerConfig';
 import { TopoLayer } from './layers/TopoLayer';
 import { OccupancyGridLayer } from './layers/OccupancyGridLayer';
 import { MapManager } from '../utils/MapManager';
-import type { TopoPoint, Route, RouteInfo, TopologyMap } from '../utils/MapManager';
+import type { TopoPoint, Route, RouteInfo } from '../utils/MapManager';
 import {
   CommandManager,
   AddPointCommand,
@@ -163,7 +163,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     
     // 获取 occupancy_grid layer 引用
     const occupancyGridLayer = layerManager.getLayer('occupancy_grid');
-    if (occupancyGridLayer) {
+    if (occupancyGridLayer instanceof OccupancyGridLayer) {
       occupancyGridLayerRef.current = occupancyGridLayer;
     }
 
@@ -259,7 +259,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
           }
           
           const occupancyGridLayer = layerManagerRef.current?.getLayer('occupancy_grid');
-          if (occupancyGridLayer) {
+          if (occupancyGridLayer instanceof OccupancyGridLayer) {
             occupancyGridLayerRef.current = occupancyGridLayer;
           }
         }, 500);

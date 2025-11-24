@@ -1,4 +1,6 @@
 import type { TopoPoint, Route } from './MapManager';
+import { MapManager } from './MapManager';
+import type { OccupancyGridLayer } from '../components/layers/OccupancyGridLayer';
 
 export interface Command {
   execute(): void;
@@ -56,7 +58,7 @@ export class CommandManager {
 
 export class AddPointCommand implements Command {
   constructor(
-    private mapManager: any,
+    private mapManager: MapManager,
     private point: TopoPoint,
     private onUpdate: () => void
   ) {}
@@ -80,7 +82,7 @@ export class DeletePointCommand implements Command {
   private routesToRestore: Route[] = [];
 
   constructor(
-    private mapManager: any,
+    private mapManager: MapManager,
     private point: TopoPoint,
     private onUpdate: () => void
   ) {
@@ -110,7 +112,7 @@ export class DeletePointCommand implements Command {
 
 export class ModifyPointCommand implements Command {
   constructor(
-    private mapManager: any,
+    private mapManager: MapManager,
     private oldPoint: TopoPoint,
     private newPoint: TopoPoint,
     private onUpdate: () => void
@@ -135,7 +137,7 @@ export class ModifyPointCommand implements Command {
 
 export class AddRouteCommand implements Command {
   constructor(
-    private mapManager: any,
+    private mapManager: MapManager,
     private route: Route,
     private onUpdate: () => void
   ) {}
@@ -157,7 +159,7 @@ export class AddRouteCommand implements Command {
 
 export class DeleteRouteCommand implements Command {
   constructor(
-    private mapManager: any,
+    private mapManager: MapManager,
     private route: Route,
     private onUpdate: () => void
   ) {}
@@ -179,7 +181,7 @@ export class DeleteRouteCommand implements Command {
 
 export class ModifyRouteCommand implements Command {
   constructor(
-    private mapManager: any,
+    private mapManager: MapManager,
     private oldRoute: Route,
     private newRoute: Route,
     private onUpdate: () => void
@@ -208,7 +210,7 @@ export interface GridCellChange {
 
 export class ModifyGridCommand implements Command {
   constructor(
-    private occupancyGridLayer: any,
+    private occupancyGridLayer: OccupancyGridLayer,
     private changes: GridCellChange[],
     private onUpdate: () => void
   ) {}

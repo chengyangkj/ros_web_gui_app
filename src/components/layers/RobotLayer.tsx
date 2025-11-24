@@ -345,7 +345,8 @@ export class RobotLayer extends BaseLayer {
       await new Promise<void>((resolve, reject) => {
         loader.load(
           urdfPath,
-          (robot: THREE.Group) => {
+          (robot: unknown) => {
+            const robotGroup = robot as THREE.Group;
             this.isLoadingUrdf = false;
             if (!this.robotGroup) {
               reject(new Error('RobotGroup was disposed during loading'));
@@ -372,8 +373,6 @@ export class RobotLayer extends BaseLayer {
               this.disposeObject3D(this.urdfRobot);
               this.urdfRobot = null;
             }
-
-            const robotGroup = robot as THREE.Group;
             this.urdfRobot = robotGroup;
             
             robotGroup.position.set(0, 0, 0);

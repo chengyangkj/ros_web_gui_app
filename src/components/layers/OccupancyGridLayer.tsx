@@ -29,13 +29,13 @@ const DEFAULT_INVALID_COLOR = { r: 1, g: 0, b: 1, a: 1 };
 
 export class OccupancyGridLayer extends BaseLayer {
   private mesh: THREE.Mesh | null = null;
-  private texture: THREE.DataTexture | null = null;
+  protected texture: THREE.DataTexture | null = null;
   private settings: OccupancyGridSettings;
-  private lastData: number[] | Int8Array | null = null;
-  private lastWidth: number = 0;
-  private lastHeight: number = 0;
-  private lastMessage: OccupancyGrid | null = null;
-  private mapManager: MapManager;
+  protected lastData: number[] | Int8Array | null = null;
+  protected lastWidth: number = 0;
+  protected lastHeight: number = 0;
+  protected lastMessage: OccupancyGrid | null = null;
+  protected mapManager: MapManager;
   private handleMapUpdate: ((map: OccupancyGrid | null) => void) | null = null;
 
   constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
