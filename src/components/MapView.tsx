@@ -362,6 +362,16 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     color: 0x2196f3,
     pointSize: 0.1,
   },
+  cmd_vel: {
+    id: 'cmd_vel',
+    name: '遥控',
+    topic: '/cmd_vel',
+    messageType: 'geometry_msgs/Twist',
+    enabled: true,
+    linearXSpeed: 0.5,
+    linearYSpeed: 0.5,
+    angularZSpeed: 0.5,
+  },
 };
 
 export function MapView({ connection }: MapViewProps) {
@@ -379,7 +389,7 @@ export function MapView({ connection }: MapViewProps) {
         merged[key] = { ...defaultConfig, ...saved[key] };
       }
       for (const [key, config] of Object.entries(saved)) {
-        if (!DEFAULT_LAYER_CONFIGS[key] && config.id === 'image') {
+        if (!DEFAULT_LAYER_CONFIGS[key] && (config.id === 'image' || config.id === 'cmd_vel')) {
           merged[key] = config;
         }
       }
@@ -417,6 +427,25 @@ export function MapView({ connection }: MapViewProps) {
   const raycasterRef = useRef<THREE.Raycaster | null>(null);
   const [imageLayers, setImageLayers] = useState<Map<string, ImageLayerData>>(new Map());
   const imagePositionsRef = useRef<Map<string, { x: number; y: number; scale: number }>>(new Map());
+  const [manualControlMode, setManualControlMode] = useState(false);
+  const activeKeysRef = useRef<Set<string>>(new Set());
+  const cmdVelTopicRef = useRef<string>('/cmd_vel');
+  const cmdVelIntervalRef = useRef<number | null>(null);
+  
+  useEffect(() => {
+    const saved = loadLayerConfigs();
+    if (saved) {
+      const cmdVelConfig = Object.values(saved).find(config => config.id === 'cmd_vel');
+      if (cmdVelConfig && cmdVelConfig.topic) {
+        cmdVelTopicRef.current = cmdVelConfig.topic as string;
+        return;
+      }
+    }
+    const defaultConfig = DEFAULT_LAYER_CONFIGS.cmd_vel;
+    if (defaultConfig && defaultConfig.topic) {
+      cmdVelTopicRef.current = defaultConfig.topic as string;
+    }
+  }, []);
   
   useEffect(() => {
     const saved = loadImagePositions();
@@ -751,7 +780,89 @@ export function MapView({ connection }: MapViewProps) {
 
   useEffect(() => {
     layerConfigsRef.current = layerConfigs;
+    const cmdVelConfig = Object.values(layerConfigs).find(config => config.id === 'cmd_vel');
+    if (cmdVelConfig && cmdVelConfig.topic) {
+      cmdVelTopicRef.current = cmdVelConfig.topic as string;
+    }
   }, [layerConfigs]);
+
+  useEffect(() => {
+    const publishCmdVel = (linearX: number, linearY: number, angular: number) => {
+      if (!connection.isConnected()) return;
+      const message = {
+        linear: { x: linearX, y: linearY, z: 0 },
+        angular: { x: 0, y: 0, z: angular },
+      };
+      connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', message);
+    };
+
+    if (!manualControlMode) {
+      if (cmdVelIntervalRef.current !== null) {
+        clearInterval(cmdVelIntervalRef.current);
+        cmdVelIntervalRef.current = null;
+      }
+      activeKeysRef.current.clear();
+      publishCmdVel(0, 0, 0);
+      return;
+    }
+
+    const updateCmdVel = () => {
+      let linearX = 0;
+      let linearY = 0;
+      let angular = 0;
+      const keys = activeKeysRef.current;
+
+      if (keys.has('w') || keys.has('W') || keys.has('ArrowUp')) {
+        linearX = 0.5;
+      }
+      if (keys.has('s') || keys.has('S') || keys.has('ArrowDown')) {
+        linearX = -0.5;
+      }
+      if (keys.has('a') || keys.has('A') || keys.has('ArrowLeft')) {
+        angular = 0.5;
+      }
+      if (keys.has('d') || keys.has('D') || keys.has('ArrowRight')) {
+        angular = -0.5;
+      }
+      if (keys.has('z') || keys.has('Z')) {
+        linearY = 0.5;
+      }
+      if (keys.has('x') || keys.has('X')) {
+        linearY = -0.5;
+      }
+
+      publishCmdVel(linearX, linearY, angular);
+    };
+
+    cmdVelIntervalRef.current = window.setInterval(updateCmdVel, 100);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+      if (['w', 'a', 's', 'd', 'z', 'x', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
+        activeKeysRef.current.add(e.key);
+        updateCmdVel();
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      activeKeysRef.current.delete(e.key);
+      updateCmdVel();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      if (cmdVelIntervalRef.current !== null) {
+        clearInterval(cmdVelIntervalRef.current);
+        cmdVelIntervalRef.current = null;
+      }
+      activeKeysRef.current.clear();
+      publishCmdVel(0, 0, 0);
+    };
+  }, [manualControlMode, connection]);
 
   useEffect(() => {
     if (layerManagerRef.current && connection.isConnected()) {
@@ -1023,7 +1134,239 @@ export function MapView({ connection }: MapViewProps) {
         >
           {isFullscreen ? '🔳' : '🔲'}
         </button>
+        <button
+          className={`SettingsButton ${manualControlMode ? 'active' : ''}`}
+          onClick={() => setManualControlMode(!manualControlMode)}
+          title={manualControlMode ? '退出手动控制' : '手动控制'}
+          type="button"
+        >
+          🎮
+        </button>
       </div>
+      {manualControlMode && (() => {
+        const cmdVelConfig = Object.values(layerConfigs).find(config => config.id === 'cmd_vel');
+        const linearXSpeed = (cmdVelConfig?.linearXSpeed as number | undefined) ?? 0.5;
+        const linearYSpeed = (cmdVelConfig?.linearYSpeed as number | undefined) ?? 0.5;
+        const angularZSpeed = (cmdVelConfig?.angularZSpeed as number | undefined) ?? 0.5;
+        return (
+        <div className="ManualControlPanel">
+          <div className="ControlButtonRow">
+            <button
+              className="ControlButton"
+              title="前进 (W / ↑)"
+              onMouseDown={() => {
+                activeKeysRef.current.add('ArrowUp');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: linearXSpeed, y: 0, z: 0 },
+                    angular: { x: 0, y: 0, z: 0 },
+                  });
+                }
+              }}
+              onMouseUp={() => {
+                activeKeysRef.current.delete('ArrowUp');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: 0, y: 0, z: 0 },
+                    angular: { x: 0, y: 0, z: 0 },
+                  });
+                }
+              }}
+              onMouseLeave={() => {
+                activeKeysRef.current.delete('ArrowUp');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: 0, y: 0, z: 0 },
+                    angular: { x: 0, y: 0, z: 0 },
+                  });
+                }
+              }}
+              type="button"
+            >
+              ↑
+            </button>
+          </div>
+          <div className="ControlButtonRow">
+            <button
+              className="ControlButton"
+              title="左转 (A / ←)"
+              onMouseDown={() => {
+                activeKeysRef.current.add('ArrowLeft');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: 0, y: 0, z: 0 },
+                    angular: { x: 0, y: 0, z: angularZSpeed },
+                  });
+                }
+              }}
+              onMouseUp={() => {
+                activeKeysRef.current.delete('ArrowLeft');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: 0, y: 0, z: 0 },
+                    angular: { x: 0, y: 0, z: 0 },
+                  });
+                }
+              }}
+              onMouseLeave={() => {
+                activeKeysRef.current.delete('ArrowLeft');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: 0, y: 0, z: 0 },
+                    angular: { x: 0, y: 0, z: 0 },
+                  });
+                }
+              }}
+              type="button"
+            >
+              ↶
+            </button>
+            <button
+              className="ControlButton"
+              title="后退 (S / ↓)"
+              onMouseDown={() => {
+                activeKeysRef.current.add('ArrowDown');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: -linearXSpeed, y: 0, z: 0 },
+                    angular: { x: 0, y: 0, z: 0 },
+                  });
+                }
+              }}
+              onMouseUp={() => {
+                activeKeysRef.current.delete('ArrowDown');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: 0, y: 0, z: 0 },
+                    angular: { x: 0, y: 0, z: 0 },
+                  });
+                }
+              }}
+              onMouseLeave={() => {
+                activeKeysRef.current.delete('ArrowDown');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: 0, y: 0, z: 0 },
+                    angular: { x: 0, y: 0, z: 0 },
+                  });
+                }
+              }}
+              type="button"
+            >
+              ↓
+            </button>
+            <button
+              className="ControlButton"
+              title="右转 (D / →)"
+              onMouseDown={() => {
+                activeKeysRef.current.add('ArrowRight');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: 0, y: 0, z: 0 },
+                    angular: { x: 0, y: 0, z: -angularZSpeed },
+                  });
+                }
+              }}
+              onMouseUp={() => {
+                activeKeysRef.current.delete('ArrowRight');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: 0, y: 0, z: 0 },
+                    angular: { x: 0, y: 0, z: 0 },
+                  });
+                }
+              }}
+              onMouseLeave={() => {
+                activeKeysRef.current.delete('ArrowRight');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: 0, y: 0, z: 0 },
+                    angular: { x: 0, y: 0, z: 0 },
+                  });
+                }
+              }}
+              type="button"
+            >
+              ↷
+            </button>
+          </div>
+          <div className="ControlButtonRow">
+            <button
+              className="ControlButton"
+              title="左移 (Z)"
+              onMouseDown={() => {
+                activeKeysRef.current.add('z');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: 0, y: linearYSpeed, z: 0 },
+                    angular: { x: 0, y: 0, z: 0 },
+                  });
+                }
+              }}
+              onMouseUp={() => {
+                activeKeysRef.current.delete('z');
+                activeKeysRef.current.delete('Z');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: 0, y: 0, z: 0 },
+                    angular: { x: 0, y: 0, z: 0 },
+                  });
+                }
+              }}
+              onMouseLeave={() => {
+                activeKeysRef.current.delete('z');
+                activeKeysRef.current.delete('Z');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: 0, y: 0, z: 0 },
+                    angular: { x: 0, y: 0, z: 0 },
+                  });
+                }
+              }}
+              type="button"
+            >
+              ←
+            </button>
+            <button
+              className="ControlButton"
+              title="右移 (X)"
+              onMouseDown={() => {
+                activeKeysRef.current.add('x');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: 0, y: -linearYSpeed, z: 0 },
+                    angular: { x: 0, y: 0, z: 0 },
+                  });
+                }
+              }}
+              onMouseUp={() => {
+                activeKeysRef.current.delete('x');
+                activeKeysRef.current.delete('X');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: 0, y: 0, z: 0 },
+                    angular: { x: 0, y: 0, z: 0 },
+                  });
+                }
+              }}
+              onMouseLeave={() => {
+                activeKeysRef.current.delete('x');
+                activeKeysRef.current.delete('X');
+                if (connection.isConnected()) {
+                  connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', {
+                    linear: { x: 0, y: 0, z: 0 },
+                    angular: { x: 0, y: 0, z: 0 },
+                  });
+                }
+              }}
+              type="button"
+            >
+              →
+            </button>
+          </div>
+        </div>
+        );
+      })()}
       <div className="BottomControls">
         <button
           className={`FocusRobotButton ${focusRobot ? 'active' : ''}`}

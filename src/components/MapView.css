@@ -228,6 +228,53 @@
   font-weight: 500;
 }
 
+.ManualControlPanel {
+  position: absolute;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.ControlButtonRow {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.ControlButton {
+  width: 60px;
+  height: 60px;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 24px;
+  font-weight: bold;
+  transition: all 0.2s;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ControlButton:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.8);
+}
+
+.ControlButton:active {
+  background-color: rgba(0, 123, 255, 0.8);
+  border-color: rgba(0, 123, 255, 1);
+  transform: scale(0.95);
+}
+
 .ImageDisplay {
   user-select: none;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);

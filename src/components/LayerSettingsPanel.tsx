@@ -20,6 +20,7 @@ interface LayerSettingsPanelProps {
 export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefaults, onClose, onUrdfConfigChange, onDeleteLayer }: LayerSettingsPanelProps) {
   const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set());
   const [editingFields, setEditingFields] = useState<Map<string, string>>(new Map());
+  const [editingValues, setEditingValues] = useState<Map<string, string>>(new Map());
   const [urdfConfigs, setUrdfConfigs] = useState<UrdfConfig[]>([]);
   const [currentUrdfId, setCurrentUrdfId] = useState<string | null>(null);
   const [showUrdfSelector, setShowUrdfSelector] = useState(false);
@@ -53,10 +54,32 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
       next.delete(`${layerId}_${field}`);
       return next;
     });
+    setEditingValues((prev) => {
+      const next = new Map(prev);
+      next.delete(`${layerId}_${field}`);
+      return next;
+    });
   };
 
-  const startEditing = (layerId: string, field: string) => {
+  const startEditing = (layerId: string, field: string, currentValue: string | null | undefined) => {
     setEditingFields((prev) => new Map(prev).set(`${layerId}_${field}`, field));
+    setEditingValues((prev) => new Map(prev).set(`${layerId}_${field}`, String(currentValue || '')));
+  };
+
+  const updateEditingValue = (layerId: string, field: string, value: string) => {
+    setEditingValues((prev) => {
+      const next = new Map(prev);
+      next.set(`${layerId}_${field}`, value);
+      return next;
+    });
+  };
+
+  const getEditingValue = (layerId: string, field: string, defaultValue: string | null | undefined): string => {
+    const key = `${layerId}_${field}`;
+    if (editingValues.has(key)) {
+      return editingValues.get(key) || '';
+    }
+    return String(defaultValue || '');
   };
 
   const isEditing = (layerId: string, field: string): boolean => {
@@ -320,6 +343,119 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
         </div>
       </div>
       <div className="LayerSettingsPanelContent">
+        {/* 遥控管理部分 */}
+        <div className="LayerItem">
+          <div className="LayerItemHeader" onClick={() => toggleLayer('cmd_vel')}>
+            <span className="LayerName">遥控</span>
+            <div className="LayerControls">
+              <span className="ExpandIcon">{expandedLayers.has('cmd_vel') ? '▼' : '▶'}</span>
+            </div>
+          </div>
+          {expandedLayers.has('cmd_vel') && (
+            <div className="LayerItemDetails" onClick={(e) => e.stopPropagation()}>
+              {Object.entries(layerConfigs)
+                .filter(([_, config]) => config.id === 'cmd_vel')
+                .map(([layerId, config]) => (
+                  <div key={layerId}>
+                    <div className="DetailRow">
+                      <span className="DetailLabel">话题:</span>
+                      {isEditing(layerId, 'topic') ? (
+                        <input
+                          className="DetailInput"
+                          type="text"
+                          value={getEditingValue(layerId, 'topic', config.topic)}
+                          onChange={(e) => updateEditingValue(layerId, 'topic', e.target.value)}
+                          onBlur={() => {
+                            const value = getEditingValue(layerId, 'topic', config.topic);
+                            handleFieldChange(layerId, 'topic', value || null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const value = getEditingValue(layerId, 'topic', config.topic);
+                              handleFieldChange(layerId, 'topic', value || null);
+                            }
+                            if (e.key === 'Escape') {
+                              setEditingFields((prev) => {
+                                const next = new Map(prev);
+                                next.delete(`${layerId}_topic`);
+                                return next;
+                              });
+                              setEditingValues((prev) => {
+                                const next = new Map(prev);
+                                next.delete(`${layerId}_topic`);
+                                return next;
+                              });
+                            }
+                          }}
+                          autoFocus
+                        />
+                      ) : (
+                        <span className="DetailValue Editable" onClick={() => startEditing(layerId, 'topic', config.topic)}>
+                          {config.topic || '(无)'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="DetailRow">
+                      <span className="DetailLabel">X轴速度 (前进/后退):</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                        <input
+                          type="range"
+                          min="0"
+                          max="2"
+                          step="0.1"
+                          value={(config.linearXSpeed as number | undefined) ?? 0.5}
+                          onChange={(e) => handleFieldChange(layerId, 'linearXSpeed', parseFloat(e.target.value))}
+                          style={{ flex: 1 }}
+                        />
+                        <span style={{ minWidth: '50px', textAlign: 'right', color: 'rgba(255, 255, 255, 0.8)' }}>
+                          {((config.linearXSpeed as number | undefined) ?? 0.5).toFixed(1)} m/s
+                        </span>
+                      </div>
+                    </div>
+                    <div className="DetailRow">
+                      <span className="DetailLabel">Y轴速度 (左右移动):</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                        <input
+                          type="range"
+                          min="0"
+                          max="2"
+                          step="0.1"
+                          value={(config.linearYSpeed as number | undefined) ?? 0.5}
+                          onChange={(e) => handleFieldChange(layerId, 'linearYSpeed', parseFloat(e.target.value))}
+                          style={{ flex: 1 }}
+                        />
+                        <span style={{ minWidth: '50px', textAlign: 'right', color: 'rgba(255, 255, 255, 0.8)' }}>
+                          {((config.linearYSpeed as number | undefined) ?? 0.5).toFixed(1)} m/s
+                        </span>
+                      </div>
+                    </div>
+                    <div className="DetailRow">
+                      <span className="DetailLabel">Z轴角速度 (旋转):</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                        <input
+                          type="range"
+                          min="0"
+                          max="2"
+                          step="0.1"
+                          value={(config.angularZSpeed as number | undefined) ?? 0.5}
+                          onChange={(e) => handleFieldChange(layerId, 'angularZSpeed', parseFloat(e.target.value))}
+                          style={{ flex: 1 }}
+                        />
+                        <span style={{ minWidth: '50px', textAlign: 'right', color: 'rgba(255, 255, 255, 0.8)' }}>
+                          {((config.angularZSpeed as number | undefined) ?? 0.5).toFixed(1)} rad/s
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              {Object.entries(layerConfigs).filter(([_, config]) => config.id === 'cmd_vel').length === 0 && (
+                <div style={{ padding: '20px', textAlign: 'center', color: 'rgba(255, 255, 255, 0.6)' }}>
+                  <p>暂无遥控配置</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         {/* 图片管理部分 */}
         <div className="LayerItem">
           <div className="LayerItemHeader" onClick={() => toggleLayer('images')}>
@@ -362,22 +498,34 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                         <input
                           className="DetailInput"
                           type="text"
-                          value={config.name || ''}
-                          onChange={(e) => handleFieldChange(layerId, 'name', e.target.value)}
-                          onBlur={() => setEditingFields((prev) => {
-                            const next = new Map(prev);
-                            next.delete(`${layerId}_name`);
-                            return next;
-                          })}
+                          value={getEditingValue(layerId, 'name', config.name)}
+                          onChange={(e) => updateEditingValue(layerId, 'name', e.target.value)}
+                          onBlur={() => {
+                            const value = getEditingValue(layerId, 'name', config.name);
+                            handleFieldChange(layerId, 'name', value);
+                          }}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
-                              handleFieldChange(layerId, 'name', (e.target as HTMLInputElement).value);
+                              const value = getEditingValue(layerId, 'name', config.name);
+                              handleFieldChange(layerId, 'name', value);
+                            }
+                            if (e.key === 'Escape') {
+                              setEditingFields((prev) => {
+                                const next = new Map(prev);
+                                next.delete(`${layerId}_name`);
+                                return next;
+                              });
+                              setEditingValues((prev) => {
+                                const next = new Map(prev);
+                                next.delete(`${layerId}_name`);
+                                return next;
+                              });
                             }
                           }}
                           autoFocus
                         />
                       ) : (
-                        <span className="DetailValue Editable" onClick={() => startEditing(layerId, 'name')}>
+                        <span className="DetailValue Editable" onClick={() => startEditing(layerId, 'name', config.name)}>
                           {config.name || '(无)'}
                         </span>
                       )}
@@ -403,7 +551,7 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                           autoFocus
                         />
                       ) : (
-                        <span className="DetailValue Editable" onClick={() => startEditing(layerId, 'topic')}>
+                        <span className="DetailValue Editable" onClick={() => startEditing(layerId, 'topic', config.topic)}>
                           {config.topic || '(无)'}
                         </span>
                       )}
@@ -591,7 +739,7 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
           )}
         </div>
         {Object.entries(layerConfigs)
-          .filter(([_, config]) => config.id !== 'image')
+          .filter(([_, config]) => config.id !== 'image' && config.id !== 'cmd_vel')
           .map(([layerId, config]) => (
           <div key={layerId} className="LayerItem">
             <div className="LayerItemHeader" onClick={() => toggleLayer(layerId)}>
@@ -637,7 +785,7 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                           autoFocus
                         />
                       ) : (
-                        <span className="DetailValue Editable" onClick={() => startEditing(layerId, 'topic')}>
+                        <span className="DetailValue Editable" onClick={() => startEditing(layerId, 'topic', config.topic)}>
                           {config.topic || '(无)'}
                         </span>
                       )}
@@ -691,22 +839,34 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                         <input
                           className="DetailInput"
                           type="text"
-                          value={(config.targetFrame as string | undefined) || ''}
-                          onChange={(e) => handleFieldChange(layerId, 'targetFrame', e.target.value)}
-                          onBlur={() => setEditingFields((prev) => {
-                            const next = new Map(prev);
-                            next.delete(`${layerId}_targetFrame`);
-                            return next;
-                          })}
+                          value={getEditingValue(layerId, 'targetFrame', config.targetFrame as string | undefined)}
+                          onChange={(e) => updateEditingValue(layerId, 'targetFrame', e.target.value)}
+                          onBlur={() => {
+                            const value = getEditingValue(layerId, 'targetFrame', config.targetFrame as string | undefined);
+                            handleFieldChange(layerId, 'targetFrame', value);
+                          }}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
-                              handleFieldChange(layerId, 'targetFrame', (e.target as HTMLInputElement).value);
+                              const value = getEditingValue(layerId, 'targetFrame', config.targetFrame as string | undefined);
+                              handleFieldChange(layerId, 'targetFrame', value);
+                            }
+                            if (e.key === 'Escape') {
+                              setEditingFields((prev) => {
+                                const next = new Map(prev);
+                                next.delete(`${layerId}_targetFrame`);
+                                return next;
+                              });
+                              setEditingValues((prev) => {
+                                const next = new Map(prev);
+                                next.delete(`${layerId}_targetFrame`);
+                                return next;
+                              });
                             }
                           }}
                           autoFocus
                         />
                       ) : (
-                        <span className="DetailValue Editable" onClick={() => startEditing(layerId, 'targetFrame')}>
+                        <span className="DetailValue Editable" onClick={() => startEditing(layerId, 'targetFrame', config.targetFrame as string | undefined)}>
                           {config.targetFrame as string | undefined}
                         </span>
                       )}
@@ -719,22 +879,34 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                         <input
                           className="DetailInput"
                           type="text"
-                          value={(config.baseFrame as string | undefined) || ''}
-                          onChange={(e) => handleFieldChange(layerId, 'baseFrame', e.target.value)}
-                          onBlur={() => setEditingFields((prev) => {
-                            const next = new Map(prev);
-                            next.delete(`${layerId}_baseFrame`);
-                            return next;
-                          })}
+                          value={getEditingValue(layerId, 'baseFrame', config.baseFrame as string | undefined)}
+                          onChange={(e) => updateEditingValue(layerId, 'baseFrame', e.target.value)}
+                          onBlur={() => {
+                            const value = getEditingValue(layerId, 'baseFrame', config.baseFrame as string | undefined);
+                            handleFieldChange(layerId, 'baseFrame', value);
+                          }}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
-                              handleFieldChange(layerId, 'baseFrame', (e.target as HTMLInputElement).value);
+                              const value = getEditingValue(layerId, 'baseFrame', config.baseFrame as string | undefined);
+                              handleFieldChange(layerId, 'baseFrame', value);
+                            }
+                            if (e.key === 'Escape') {
+                              setEditingFields((prev) => {
+                                const next = new Map(prev);
+                                next.delete(`${layerId}_baseFrame`);
+                                return next;
+                              });
+                              setEditingValues((prev) => {
+                                const next = new Map(prev);
+                                next.delete(`${layerId}_baseFrame`);
+                                return next;
+                              });
                             }
                           }}
                           autoFocus
                         />
                       ) : (
-                        <span className="DetailValue Editable" onClick={() => startEditing(layerId, 'baseFrame')}>
+                        <span className="DetailValue Editable" onClick={() => startEditing(layerId, 'baseFrame', config.baseFrame as string | undefined)}>
                           {config.baseFrame as string | undefined}
                         </span>
                       )}
@@ -747,22 +919,34 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                         <input
                           className="DetailInput"
                           type="text"
-                          value={(config.mapFrame as string | undefined) || ''}
-                          onChange={(e) => handleFieldChange(layerId, 'mapFrame', e.target.value)}
-                          onBlur={() => setEditingFields((prev) => {
-                            const next = new Map(prev);
-                            next.delete(`${layerId}_mapFrame`);
-                            return next;
-                          })}
+                          value={getEditingValue(layerId, 'mapFrame', config.mapFrame as string | undefined)}
+                          onChange={(e) => updateEditingValue(layerId, 'mapFrame', e.target.value)}
+                          onBlur={() => {
+                            const value = getEditingValue(layerId, 'mapFrame', config.mapFrame as string | undefined);
+                            handleFieldChange(layerId, 'mapFrame', value);
+                          }}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
-                              handleFieldChange(layerId, 'mapFrame', (e.target as HTMLInputElement).value);
+                              const value = getEditingValue(layerId, 'mapFrame', config.mapFrame as string | undefined);
+                              handleFieldChange(layerId, 'mapFrame', value);
+                            }
+                            if (e.key === 'Escape') {
+                              setEditingFields((prev) => {
+                                const next = new Map(prev);
+                                next.delete(`${layerId}_mapFrame`);
+                                return next;
+                              });
+                              setEditingValues((prev) => {
+                                const next = new Map(prev);
+                                next.delete(`${layerId}_mapFrame`);
+                                return next;
+                              });
                             }
                           }}
                           autoFocus
                         />
                       ) : (
-                        <span className="DetailValue Editable" onClick={() => startEditing(layerId, 'mapFrame')}>
+                        <span className="DetailValue Editable" onClick={() => startEditing(layerId, 'mapFrame', config.mapFrame as string | undefined)}>
                           {(config as any).mapFrame}
                         </span>
                       )}
