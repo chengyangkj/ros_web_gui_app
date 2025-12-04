@@ -4,7 +4,6 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { toast } from 'react-toastify';
 import { RosbridgeConnection } from '../utils/RosbridgeConnection';
 import { TF2JS } from '../utils/tf2js';
-import { MapManager } from '../utils/MapManager';
 import { LayerManager } from './layers/LayerManager';
 import type { LayerConfigMap } from '../types/LayerConfig';
 import { LayerSettingsPanel } from './LayerSettingsPanel';
@@ -13,8 +12,15 @@ import { ImageDisplay } from './ImageDisplay';
 import { ManualControlPanel } from './ManualControlPanel';
 import { TopoPointInfoPanel } from './TopoPointInfoPanel';
 import { DEFAULT_LAYER_CONFIGS } from '../constants/layerConfigs';
-import { loadLayerConfigs, saveLayerConfigs, loadImagePositions, saveImagePositions, type ImagePositionsMap } from '../utils/layerConfigStorage';
-import type { ImageLayerData } from './layers/ImageLayer';
+import { loadLayerConfigs, saveLayerConfigs, saveImagePositions, type ImagePositionsMap } from '../utils/layerConfigStorage';
+import { useLayerConfigSync } from '../hooks/useLayerConfigSync';
+import { useManualControl } from '../hooks/useManualControl';
+import { useInitialization } from '../hooks/useInitialization';
+import { useImageLayers } from '../hooks/useImageLayers';
+import { useRelocalizeMode } from '../hooks/useRelocalizeMode';
+import { useViewMode } from '../hooks/useViewMode';
+import { useFullscreen } from '../hooks/useFullscreen';
+import { useConnectionInit } from '../hooks/useConnectionInit';
 import './MapView.css';
 
 interface MapViewProps {
@@ -50,7 +56,7 @@ export function MapView({ connection }: MapViewProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
   const [focusRobot, setFocusRobot] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const isFullscreen = useFullscreen();
   const [mouseWorldPos, setMouseWorldPos] = useState<{ x: number; y: number } | null>(null);
   const [robotPos, setRobotPos] = useState<{ x: number; y: number; theta: number } | null>(null);
   const focusRobotRef = useRef(false);
@@ -72,7 +78,6 @@ export function MapView({ connection }: MapViewProps) {
     };
   } | null>(null);
   const raycasterRef = useRef<THREE.Raycaster | null>(null);
-  const [imageLayers, setImageLayers] = useState<Map<string, ImageLayerData>>(new Map());
   const imagePositionsRef = useRef<Map<string, { x: number; y: number; scale: number }>>(new Map());
   const [manualControlMode, setManualControlMode] = useState(false);
   const activeKeysRef = useRef<Set<string>>(new Set());
@@ -86,40 +91,24 @@ export function MapView({ connection }: MapViewProps) {
   const initialposeTopicRef = useRef<string>('/initialpose');
   const relocalizeButtonRef = useRef<HTMLButtonElement>(null);
   const relocalizeControlsRef = useRef<HTMLDivElement>(null);
-  const [relocalizeControlsStyle, setRelocalizeControlsStyle] = useState<React.CSSProperties>({});
   
-  useEffect(() => {
-    const saved = loadLayerConfigs();
-    if (saved) {
-      const cmdVelConfig = Object.values(saved).find(config => config.id === 'cmd_vel');
-      if (cmdVelConfig && cmdVelConfig.topic) {
-        cmdVelTopicRef.current = cmdVelConfig.topic as string;
-      }
-      const initialposeConfig = Object.values(saved).find(config => config.id === 'initialpose');
-      if (initialposeConfig && initialposeConfig.topic) {
-        initialposeTopicRef.current = initialposeConfig.topic as string;
-      }
-    }
-    const defaultCmdVelConfig = DEFAULT_LAYER_CONFIGS.cmd_vel;
-    if (defaultCmdVelConfig && defaultCmdVelConfig.topic) {
-      cmdVelTopicRef.current = defaultCmdVelConfig.topic as string;
-    }
-    const defaultInitialposeConfig = DEFAULT_LAYER_CONFIGS.initialpose;
-    if (defaultInitialposeConfig && defaultInitialposeConfig.topic) {
-      initialposeTopicRef.current = defaultInitialposeConfig.topic as string;
-    }
-  }, []);
+  useInitialization(cmdVelTopicRef, initialposeTopicRef, imagePositionsRef);
   
-  useEffect(() => {
-    const saved = loadImagePositions();
-    if (saved) {
-      const map = new Map<string, { x: number; y: number; scale: number }>();
-      for (const [layerId, position] of Object.entries(saved)) {
-        map.set(layerId, position);
-      }
-      imagePositionsRef.current = map;
-    }
-  }, []);
+  const imageLayers = useImageLayers(layerConfigs, imagePositionsRef);
+  
+  const relocalizeControlsStyle = useRelocalizeMode(
+    relocalizeMode,
+    viewMode,
+    layerConfigsRef,
+    layerManagerRef,
+    controlsRef,
+    relocalizeButtonRef,
+    relocalizeControlsRef,
+    relocalizeRobotPosRef,
+    relocalizeModeRef
+  );
+  
+  useViewMode(viewMode, viewModeRef, controlsRef, cameraRef);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -514,136 +503,24 @@ export function MapView({ connection }: MapViewProps) {
     };
   }, [connection]);
 
-  useEffect(() => {
-    if (!connection.isConnected() || !layerManagerRef.current) {
-      return;
-    }
+  useConnectionInit(connection, layerManagerRef, layerConfigs);
 
-    const initializeAndSubscribe = async () => {
-      try {
-        await connection.initializeMessageReaders();
-        
-        console.log('[MapView] Initializing MapManager after MessageReaders are ready', { 
-          hasConnection: !!connection, 
-          isConnected: connection.isConnected() 
-        });
-        const mapManager = MapManager.getInstance();
-        mapManager.initialize(connection);
-        
-        TF2JS.getInstance().initialize(connection);
-        layerManagerRef.current?.setLayerConfigs(layerConfigs);
-      } catch (error) {
-        console.error('Failed to initialize message readers:', error);
-        toast.error('初始化失败，使用默认配置...');
-        const mapManager = MapManager.getInstance();
-        mapManager.initialize(connection);
-        TF2JS.getInstance().initialize(connection);
-        layerManagerRef.current?.setLayerConfigs(layerConfigs);
-      }
-    };
+  useLayerConfigSync(
+    layerConfigs,
+    layerConfigsRef,
+    layerManagerRef,
+    connection,
+    cmdVelTopicRef,
+    initialposeTopicRef
+  );
 
-    void initializeAndSubscribe();
-
-    return () => {
-      TF2JS.getInstance().disconnect();
-    };
-  }, [connection]);
-
-  useEffect(() => {
-    layerConfigsRef.current = layerConfigs;
-    const cmdVelConfig = Object.values(layerConfigs).find(config => config.id === 'cmd_vel');
-    if (cmdVelConfig && cmdVelConfig.topic) {
-      cmdVelTopicRef.current = cmdVelConfig.topic as string;
-    }
-    const initialposeConfig = Object.values(layerConfigs).find(config => config.id === 'initialpose');
-    if (initialposeConfig && initialposeConfig.topic) {
-      initialposeTopicRef.current = initialposeConfig.topic as string;
-    }
-  }, [layerConfigs]);
-
-  useEffect(() => {
-    const publishCmdVel = (linearX: number, linearY: number, angular: number) => {
-      if (!connection.isConnected()) return;
-      const message = {
-        linear: { x: linearX, y: linearY, z: 0 },
-        angular: { x: 0, y: 0, z: angular },
-      };
-      connection.publish(cmdVelTopicRef.current, 'geometry_msgs/Twist', message);
-    };
-
-    if (!manualControlMode) {
-      if (cmdVelIntervalRef.current !== null) {
-        clearInterval(cmdVelIntervalRef.current);
-        cmdVelIntervalRef.current = null;
-      }
-      activeKeysRef.current.clear();
-      publishCmdVel(0, 0, 0);
-      return;
-    }
-
-    const updateCmdVel = () => {
-      let linearX = 0;
-      let linearY = 0;
-      let angular = 0;
-      const keys = activeKeysRef.current;
-
-      if (keys.has('w') || keys.has('W') || keys.has('ArrowUp')) {
-        linearX = 0.5;
-      }
-      if (keys.has('s') || keys.has('S') || keys.has('ArrowDown')) {
-        linearX = -0.5;
-      }
-      if (keys.has('a') || keys.has('A') || keys.has('ArrowLeft')) {
-        angular = 0.5;
-      }
-      if (keys.has('d') || keys.has('D') || keys.has('ArrowRight')) {
-        angular = -0.5;
-      }
-      if (keys.has('z') || keys.has('Z')) {
-        linearY = 0.5;
-      }
-      if (keys.has('x') || keys.has('X')) {
-        linearY = -0.5;
-      }
-
-      publishCmdVel(linearX, linearY, angular);
-    };
-
-    cmdVelIntervalRef.current = window.setInterval(updateCmdVel, 100);
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const key = e.key.toLowerCase();
-      if (['w', 'a', 's', 'd', 'z', 'x', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) {
-        activeKeysRef.current.add(e.key);
-        updateCmdVel();
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      activeKeysRef.current.delete(e.key);
-      updateCmdVel();
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('keyup', handleKeyUp);
-      if (cmdVelIntervalRef.current !== null) {
-        clearInterval(cmdVelIntervalRef.current);
-        cmdVelIntervalRef.current = null;
-      }
-      activeKeysRef.current.clear();
-      publishCmdVel(0, 0, 0);
-    };
-  }, [manualControlMode, connection]);
-
-  useEffect(() => {
-    if (layerManagerRef.current && connection.isConnected()) {
-      layerManagerRef.current.setLayerConfigs(layerConfigs);
-    }
-  }, [layerConfigs, connection]);
+  useManualControl(
+    manualControlMode,
+    connection,
+    cmdVelTopicRef,
+    activeKeysRef,
+    cmdVelIntervalRef
+  );
 
   const handleConfigChange = (layerId: string, config: Partial<import('../types/LayerConfig').LayerConfig>) => {
     setLayerConfigs((prev) => {
@@ -667,229 +544,6 @@ export function MapView({ connection }: MapViewProps) {
   useEffect(() => {
     focusRobotRef.current = focusRobot;
   }, [focusRobot]);
-
-  useEffect(() => {
-    const handleImageUpdate = (event: CustomEvent) => {
-      const { layerId: configId, imageUrl, width, height } = event.detail;
-      if (imageUrl) {
-        const matchingLayerId = Object.keys(layerConfigs).find(
-          (id) => layerConfigs[id]?.id === configId
-        );
-        if (matchingLayerId) {
-          setImageLayers((prev) => {
-            const next = new Map(prev);
-            next.set(matchingLayerId, { imageUrl, width, height, layerId: matchingLayerId });
-            return next;
-          });
-          if (!imagePositionsRef.current.has(matchingLayerId)) {
-            const savedPositions = loadImagePositions();
-            const savedPosition = savedPositions?.[matchingLayerId];
-            if (savedPosition) {
-              imagePositionsRef.current.set(matchingLayerId, savedPosition);
-            } else {
-              imagePositionsRef.current.set(matchingLayerId, { x: 100, y: 100, scale: 1 });
-            }
-          }
-        }
-      }
-    };
-
-    window.addEventListener('imageLayerUpdate', handleImageUpdate as EventListener);
-    return () => {
-      window.removeEventListener('imageLayerUpdate', handleImageUpdate as EventListener);
-    };
-  }, [layerConfigs]);
-
-  useEffect(() => {
-    const imageLayerIds = new Set(imageLayers.keys());
-    const configLayerIds = new Set(
-      Object.entries(layerConfigs)
-        .filter(([_, config]) => config.id === 'image')
-        .map(([id]) => id)
-    );
-    
-    for (const layerId of imageLayerIds) {
-      if (!configLayerIds.has(layerId) || !layerConfigs[layerId]?.enabled) {
-        setImageLayers((prev) => {
-          const next = new Map(prev);
-          next.delete(layerId);
-          return next;
-        });
-        imagePositionsRef.current.delete(layerId);
-        const positionsMap: ImagePositionsMap = {};
-        imagePositionsRef.current.forEach((pos, id) => {
-          positionsMap[id] = pos;
-        });
-        saveImagePositions(positionsMap);
-      }
-    }
-  }, [layerConfigs, imageLayers]);
-
-  useEffect(() => {
-    relocalizeModeRef.current = relocalizeMode;
-    if (controlsRef.current) {
-      if (relocalizeMode) {
-        controlsRef.current.enablePan = false;
-        controlsRef.current.enableRotate = false;
-        controlsRef.current.enableZoom = true;
-      } else {
-        controlsRef.current.enablePan = true;
-        controlsRef.current.enableRotate = viewMode === '3d';
-        controlsRef.current.enableZoom = true;
-      }
-    }
-  }, [relocalizeMode, viewMode]);
-
-  useEffect(() => {
-    const updateRelocalizeControlsPosition = () => {
-      if (!relocalizeMode || !relocalizeButtonRef.current || !relocalizeControlsRef.current) {
-        return;
-      }
-
-      const buttonRect = relocalizeButtonRef.current.getBoundingClientRect();
-      
-      const buttonRight = window.innerWidth - buttonRect.right;
-      const buttonTop = buttonRect.top;
-      const gap = 10;
-      
-      setRelocalizeControlsStyle({
-        top: `${buttonTop}px`,
-        right: `${buttonRight + buttonRect.width + gap}px`,
-      });
-    };
-
-    if (relocalizeMode) {
-      updateRelocalizeControlsPosition();
-      
-      const handleResize = () => {
-        updateRelocalizeControlsPosition();
-      };
-      
-      window.addEventListener('resize', handleResize);
-      
-      const timeoutId = setTimeout(() => {
-        updateRelocalizeControlsPosition();
-      }, 100);
-      
-      return () => {
-        window.removeEventListener('resize', handleResize);
-        clearTimeout(timeoutId);
-      };
-    } else {
-      setRelocalizeControlsStyle({});
-    }
-  }, [relocalizeMode, layerConfigs]);
-
-  useEffect(() => {
-    if (relocalizeMode) {
-      const robotConfig = layerConfigsRef.current.robot;
-      if (robotConfig) {
-        const baseFrame = (robotConfig as any).baseFrame || 'base_link';
-        const mapFrame = (robotConfig as any).mapFrame || 'map';
-        const tf2js = TF2JS.getInstance();
-        const transform = tf2js.findTransform(mapFrame, baseFrame);
-        
-        if (transform) {
-          const robotEuler = new THREE.Euler();
-          robotEuler.setFromQuaternion(transform.rotation, 'XYZ');
-          const robotTheta = robotEuler.z;
-          
-          relocalizeRobotPosRef.current = {
-            x: transform.translation.x,
-            y: transform.translation.y,
-            theta: robotTheta,
-          };
-          
-          const robotLayer = layerManagerRef.current?.getLayer('robot');
-          if (robotLayer && 'setRelocalizeMode' in robotLayer) {
-            (robotLayer as any).setRelocalizeMode(true, relocalizeRobotPosRef.current);
-          }
-          
-          const laserScanLayer = layerManagerRef.current?.getLayer('laser_scan');
-          if (laserScanLayer && 'setRelocalizeMode' in laserScanLayer) {
-            (laserScanLayer as any).setRelocalizeMode(true, relocalizeRobotPosRef.current);
-          }
-        } else {
-          relocalizeRobotPosRef.current = { x: 0, y: 0, theta: 0 };
-          const robotLayer = layerManagerRef.current?.getLayer('robot');
-          if (robotLayer && 'setRelocalizeMode' in robotLayer) {
-            (robotLayer as any).setRelocalizeMode(true, relocalizeRobotPosRef.current);
-          }
-          
-          const laserScanLayer = layerManagerRef.current?.getLayer('laser_scan');
-          if (laserScanLayer && 'setRelocalizeMode' in laserScanLayer) {
-            (laserScanLayer as any).setRelocalizeMode(true, relocalizeRobotPosRef.current);
-          }
-        }
-      }
-    } else {
-      relocalizeRobotPosRef.current = null;
-      const robotLayer = layerManagerRef.current?.getLayer('robot');
-      if (robotLayer && 'setRelocalizeMode' in robotLayer) {
-        (robotLayer as any).setRelocalizeMode(false, null);
-      }
-      const laserScanLayer = layerManagerRef.current?.getLayer('laser_scan');
-      if (laserScanLayer && 'setRelocalizeMode' in laserScanLayer) {
-        (laserScanLayer as any).setRelocalizeMode(false, null);
-      }
-    }
-  }, [relocalizeMode]);
-  
-  useEffect(() => {
-    if (relocalizeMode && relocalizeRobotPosRef.current) {
-      const laserScanLayer = layerManagerRef.current?.getLayer('laser_scan');
-      if (laserScanLayer && 'setRelocalizeMode' in laserScanLayer) {
-        (laserScanLayer as any).setRelocalizeMode(true, relocalizeRobotPosRef.current);
-      }
-    }
-  }, [relocalizeRobotPosRef.current, relocalizeMode]);
-
-  useEffect(() => {
-    viewModeRef.current = viewMode;
-    
-    if (!controlsRef.current || !cameraRef.current) {
-      return;
-    }
-
-    const controls = controlsRef.current;
-    const camera = cameraRef.current;
-
-    if (viewMode === '2d') {
-      controls.enableRotate = false;
-      controls.enableZoom = true;
-      controls.enablePan = true;
-      controls.screenSpacePanning = true;
-      controls.enableDamping = true;
-      controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
-      controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
-      (controls as any).zoomToCursor = true;
-      
-      const targetZ = 0;
-      // 使用 controls.minDistance 来限制最小距离，而不是硬编码 0.1
-      const distance = Math.max(Math.abs(camera.position.z - targetZ), controls.minDistance);
-      camera.up.set(0, 0, 1);
-      camera.position.set(controls.target.x, controls.target.y, targetZ + distance);
-      controls.target.set(controls.target.x, controls.target.y, targetZ);
-      camera.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0, 'XYZ'));
-      
-      controls.update();
-      
-
-    } else {
-      controls.enableRotate = true;
-      controls.enableZoom = true;
-      controls.enablePan = true;
-      controls.screenSpacePanning = false;
-      controls.maxPolarAngle = Math.PI;
-      controls.minPolarAngle = 0;
-      controls.enableDamping = true;
-      controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
-      controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
-      (controls as any).zoomToCursor = true;
-      camera.up.set(0, 0, 1);
-      controls.update();
-    }
-  }, [viewMode]);
 
   const handleViewModeToggle = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
@@ -1059,17 +713,6 @@ export function MapView({ connection }: MapViewProps) {
   };
 
 
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-    };
-  }, []);
 
   return (
     <div className="MapView">
