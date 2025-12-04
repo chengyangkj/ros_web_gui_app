@@ -180,7 +180,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
 
     const updateRobotPosition = () => {
       const tf2js = TF2JS.getInstance();
-      const transform = tf2js.findTransform('map', 'base_center');
+      const transform = tf2js.findTransform('map', 'base_link');
       
       if (transform) {
         const robotEuler = new THREE.Euler();
@@ -1083,7 +1083,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   const handleAddRobotPosition = () => {
     const tf2js = TF2JS.getInstance();
     const mapFrame = 'map';
-    const baseFrame = 'base_center';
+    const baseFrame = 'base_link';
     const transform = tf2js.findTransform(mapFrame, baseFrame);
     
     if (!transform) {

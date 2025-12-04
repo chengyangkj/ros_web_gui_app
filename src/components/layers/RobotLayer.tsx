@@ -466,7 +466,7 @@ export class RobotLayer extends BaseLayer {
  
     const transform = this.tf2js.findTransform( this.mapFrame, this.baseFrame);
     if (transform) {
-      // The transform gives us base_center's position and orientation in map frame
+      // The transform gives us base_link's position and orientation in map frame
       this.robotGroup.position.set(
         transform.translation.x,
         transform.translation.y,

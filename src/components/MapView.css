@@ -228,3 +228,16 @@
   font-weight: 500;
 }
 
+.ImageDisplay {
+  user-select: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.ImageDisplay:hover {
+  border-color: rgba(255, 255, 255, 0.8);
+}
+
+.ImageResizeHandle:hover {
+  background-color: rgba(255, 255, 255, 0.9);
+}
+

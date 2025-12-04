@@ -14,9 +14,10 @@ interface LayerSettingsPanelProps {
   onResetToDefaults: () => void;
   onClose: () => void;
   onUrdfConfigChange?: () => void;
+  onDeleteLayer?: (layerId: string) => void;
 }
 
-export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefaults, onClose, onUrdfConfigChange }: LayerSettingsPanelProps) {
+export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefaults, onClose, onUrdfConfigChange, onDeleteLayer }: LayerSettingsPanelProps) {
   const [expandedLayers, setExpandedLayers] = useState<Set<string>>(new Set());
   const [editingFields, setEditingFields] = useState<Map<string, string>>(new Map());
   const [urdfConfigs, setUrdfConfigs] = useState<UrdfConfig[]>([]);
@@ -25,6 +26,9 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
   const [urdfFileOptions, setUrdfFileOptions] = useState<{ files: string[], zip: JSZip | null, filesToSave: Map<string, string | ArrayBuffer>, fileTypes: ('urdf' | 'xacro')[] }>({ files: [], zip: null, filesToSave: new Map(), fileTypes: [] });
   const urdfFileInputRef = useRef<HTMLInputElement>(null);
   const [tfFrames, setTfFrames] = useState<string[]>([]);
+  const [showAddImageDialog, setShowAddImageDialog] = useState(false);
+  const [newImageTopic, setNewImageTopic] = useState('');
+  const [newImageType, setNewImageType] = useState<'sensor_msgs/Image' | 'sensor_msgs/CompressedImage'>('sensor_msgs/Image');
 
   const toggleLayer = (layerId: string) => {
     setExpandedLayers((prev) => {
@@ -316,6 +320,148 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
         </div>
       </div>
       <div className="LayerSettingsPanelContent">
+        {/* 图片管理部分 */}
+        <div className="LayerItem">
+          <div className="LayerItemHeader" onClick={() => toggleLayer('images')}>
+            <span className="LayerName">图片</span>
+            <div className="LayerControls">
+              <button
+                className="DetailButton"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowAddImageDialog(true);
+                  setNewImageTopic('');
+                  setNewImageType('sensor_msgs/Image');
+                }}
+                type="button"
+                style={{
+                  padding: '4px 8px',
+                  fontSize: '12px',
+                  backgroundColor: '#2196F3',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  marginRight: '8px',
+                }}
+              >
+                添加
+              </button>
+              <span className="ExpandIcon">{expandedLayers.has('images') ? '▼' : '▶'}</span>
+            </div>
+          </div>
+          {expandedLayers.has('images') && (
+            <div className="LayerItemDetails" onClick={(e) => e.stopPropagation()}>
+              {Object.entries(layerConfigs)
+                .filter(([_, config]) => config.id === 'image')
+                .map(([layerId, config]) => (
+                  <div key={layerId} style={{ marginBottom: '12px', padding: '8px', backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: '4px' }}>
+                    <div className="DetailRow" style={{ marginBottom: '8px' }}>
+                      <span className="DetailLabel">名称:</span>
+                      {isEditing(layerId, 'name') ? (
+                        <input
+                          className="DetailInput"
+                          type="text"
+                          value={config.name || ''}
+                          onChange={(e) => handleFieldChange(layerId, 'name', e.target.value)}
+                          onBlur={() => setEditingFields((prev) => {
+                            const next = new Map(prev);
+                            next.delete(`${layerId}_name`);
+                            return next;
+                          })}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleFieldChange(layerId, 'name', (e.target as HTMLInputElement).value);
+                            }
+                          }}
+                          autoFocus
+                        />
+                      ) : (
+                        <span className="DetailValue Editable" onClick={() => startEditing(layerId, 'name')}>
+                          {config.name || '(无)'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="DetailRow">
+                      <span className="DetailLabel">话题:</span>
+                      {isEditing(layerId, 'topic') ? (
+                        <input
+                          className="DetailInput"
+                          type="text"
+                          value={config.topic || ''}
+                          onChange={(e) => handleFieldChange(layerId, 'topic', e.target.value || null)}
+                          onBlur={() => setEditingFields((prev) => {
+                            const next = new Map(prev);
+                            next.delete(`${layerId}_topic`);
+                            return next;
+                          })}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleFieldChange(layerId, 'topic', (e.target as HTMLInputElement).value || null);
+                            }
+                          }}
+                          autoFocus
+                        />
+                      ) : (
+                        <span className="DetailValue Editable" onClick={() => startEditing(layerId, 'topic')}>
+                          {config.topic || '(无)'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="DetailRow">
+                      <span className="DetailLabel">类型:</span>
+                      <select
+                        className="DetailSelect"
+                        value={(config.messageType as string | undefined) || 'sensor_msgs/Image'}
+                        onChange={(e) => handleFieldChange(layerId, 'messageType', e.target.value)}
+                      >
+                        <option value="sensor_msgs/Image">sensor_msgs/Image</option>
+                        <option value="sensor_msgs/CompressedImage">sensor_msgs/CompressedImage</option>
+                      </select>
+                    </div>
+                    <div className="DetailRow" style={{ marginTop: '8px' }}>
+                      <label className="ToggleSwitch">
+                        <input
+                          type="checkbox"
+                          checked={config.enabled}
+                          onChange={(e) => handleToggleEnabled(layerId, e.target.checked)}
+                        />
+                        <span>显示</span>
+                      </label>
+                      {onDeleteLayer && (
+                        <button
+                          className="DetailButton"
+                          onClick={() => {
+                            if (confirm(`确定要删除图层 "${config.name}" 吗？`)) {
+                              onDeleteLayer(layerId);
+                            }
+                          }}
+                          type="button"
+                          style={{
+                            padding: '4px 8px',
+                            fontSize: '12px',
+                            backgroundColor: 'rgba(255, 107, 107, 0.2)',
+                            color: '#ff6b6b',
+                            border: '1px solid rgba(255, 107, 107, 0.3)',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            marginLeft: 'auto',
+                          }}
+                        >
+                          删除
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              {Object.entries(layerConfigs).filter(([_, config]) => config.id === 'image').length === 0 && (
+                <div style={{ padding: '20px', textAlign: 'center', color: 'rgba(255, 255, 255, 0.6)' }}>
+                  <p>暂无图片图层</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         {/* URDF 管理部分 */}
         <div className="LayerItem">
           <div className="LayerItemHeader" onClick={() => toggleLayer('urdf')}>
@@ -444,7 +590,9 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
             </div>
           )}
         </div>
-        {Object.entries(layerConfigs).map(([layerId, config]) => (
+        {Object.entries(layerConfigs)
+          .filter(([_, config]) => config.id !== 'image')
+          .map(([layerId, config]) => (
           <div key={layerId} className="LayerItem">
             <div className="LayerItemHeader" onClick={() => toggleLayer(layerId)}>
               <span className="LayerName">{config.name}</span>
@@ -810,6 +958,129 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                 type="button"
               >
                 取消
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+      {showAddImageDialog && (
+        <>
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              zIndex: 10002,
+            }}
+            onClick={() => setShowAddImageDialog(false)}
+          />
+          <div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              backgroundColor: 'rgba(30, 30, 30, 0.98)',
+              padding: '20px',
+              borderRadius: '8px',
+              boxShadow: '0 4px 6px rgba(0, 0, 0, 0.3)',
+              zIndex: 10003,
+              minWidth: '400px',
+              maxWidth: '600px',
+              color: 'white',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ marginBottom: '15px' }}>
+              <h3 style={{ margin: '0 0 10px 0', color: 'white' }}>添加图片图层</h3>
+            </div>
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px' }}>
+                话题名称:
+              </label>
+              <input
+                type="text"
+                value={newImageTopic}
+                onChange={(e) => setNewImageTopic(e.target.value)}
+                placeholder="/camera/image_raw"
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '4px',
+                  color: 'white',
+                  fontSize: '14px',
+                }}
+                autoFocus
+              />
+            </div>
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px' }}>
+                消息类型:
+              </label>
+              <select
+                value={newImageType}
+                onChange={(e) => setNewImageType(e.target.value as 'sensor_msgs/Image' | 'sensor_msgs/CompressedImage')}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '4px',
+                  color: 'white',
+                  fontSize: '14px',
+                }}
+              >
+                <option value="sensor_msgs/Image">sensor_msgs/Image</option>
+                <option value="sensor_msgs/CompressedImage">sensor_msgs/CompressedImage</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                onClick={() => setShowAddImageDialog(false)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  color: 'white',
+                }}
+                type="button"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  if (newImageTopic.trim()) {
+                    const newLayerId = `image_${Date.now()}`;
+                    onConfigChange(newLayerId, {
+                      id: 'image',
+                      name: `图片 ${Object.keys(layerConfigs).filter(k => layerConfigs[k]?.id === 'image').length + 1}`,
+                      topic: newImageTopic.trim(),
+                      messageType: newImageType,
+                      enabled: true,
+                    });
+                    setShowAddImageDialog(false);
+                    setNewImageTopic('');
+                    setNewImageType('sensor_msgs/Image');
+                  }
+                }}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#2196F3',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  color: 'white',
+                }}
+                type="button"
+              >
+                确定
               </button>
             </div>
           </div>

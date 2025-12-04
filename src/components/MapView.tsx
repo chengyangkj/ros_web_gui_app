@@ -9,11 +9,262 @@ import { LayerManager } from './layers/LayerManager';
 import type { LayerConfigMap } from '../types/LayerConfig';
 import { LayerSettingsPanel } from './LayerSettingsPanel';
 import { MapEditor } from './MapEditor';
-import { loadLayerConfigs, saveLayerConfigs } from '../utils/layerConfigStorage';
+import { loadLayerConfigs, saveLayerConfigs, loadImagePositions, saveImagePositions, type ImagePositionsMap } from '../utils/layerConfigStorage';
+import type { ImageLayerData } from './layers/ImageLayer';
 import './MapView.css';
 
 interface MapViewProps {
   connection: RosbridgeConnection;
+}
+
+interface ImageDisplayProps {
+  imageData: ImageLayerData;
+  name: string;
+  position: { x: number; y: number; scale: number };
+  onPositionChange: (position: { x: number; y: number; scale: number }) => void;
+}
+
+function ImageDisplay({ imageData, name, position, onPositionChange }: ImageDisplayProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef<{ x: number; y: number } | null>(null);
+  const isResizingRef = useRef(false);
+  const resizeStartRef = useRef<{ x: number; y: number; scale: number; initialDistance?: number } | null>(null);
+
+  const handleMouseMove = useRef((e: MouseEvent) => {
+    if (isDraggingRef.current && dragStartRef.current) {
+      onPositionChange({
+        x: e.clientX - dragStartRef.current.x,
+        y: e.clientY - dragStartRef.current.y,
+        scale: position.scale,
+      });
+    } else if (isResizingRef.current && resizeStartRef.current) {
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      if (containerRect) {
+        const currentDistance = Math.sqrt(
+          Math.pow(containerRect.right - e.clientX, 2) + 
+          Math.pow(containerRect.bottom - e.clientY, 2)
+        );
+        const initialDistance = resizeStartRef.current.initialDistance || 100;
+        const scaleRatio = currentDistance / initialDistance;
+        const newScale = Math.max(0.1, Math.min(5, resizeStartRef.current.scale * scaleRatio));
+        onPositionChange({
+          x: position.x,
+          y: position.y,
+          scale: newScale,
+        });
+        resizeStartRef.current.initialDistance = currentDistance / (newScale / resizeStartRef.current.scale);
+      } else {
+        const deltaX = e.clientX - resizeStartRef.current.x;
+        const deltaY = e.clientY - resizeStartRef.current.y;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        const direction = deltaX + deltaY > 0 ? 1 : -1;
+        const scaleDelta = (distance * direction) / 200;
+        const newScale = Math.max(0.1, Math.min(5, resizeStartRef.current.scale + scaleDelta));
+        onPositionChange({
+          x: position.x,
+          y: position.y,
+          scale: newScale,
+        });
+      }
+    }
+  });
+
+  const handleMouseUp = useRef(() => {
+    isDraggingRef.current = false;
+    isResizingRef.current = false;
+    dragStartRef.current = null;
+    resizeStartRef.current = null;
+  });
+
+  useEffect(() => {
+    handleMouseMove.current = (e: MouseEvent) => {
+      if (isDraggingRef.current && dragStartRef.current) {
+        onPositionChange({
+          x: e.clientX - dragStartRef.current.x,
+          y: e.clientY - dragStartRef.current.y,
+          scale: position.scale,
+        });
+      } else if (isResizingRef.current && resizeStartRef.current) {
+        const containerRect = containerRef.current?.getBoundingClientRect();
+        if (containerRect) {
+          const currentDistance = Math.sqrt(
+            Math.pow(containerRect.right - e.clientX, 2) + 
+            Math.pow(containerRect.bottom - e.clientY, 2)
+          );
+          const initialDistance = resizeStartRef.current.initialDistance || 100;
+          const scaleRatio = currentDistance / initialDistance;
+          const newScale = Math.max(0.1, Math.min(5, resizeStartRef.current.scale * scaleRatio));
+          onPositionChange({
+            x: position.x,
+            y: position.y,
+            scale: newScale,
+          });
+          resizeStartRef.current.initialDistance = currentDistance / (newScale / resizeStartRef.current.scale);
+        } else {
+          const deltaX = e.clientX - resizeStartRef.current.x;
+          const deltaY = e.clientY - resizeStartRef.current.y;
+          const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+          const direction = deltaX + deltaY > 0 ? 1 : -1;
+          const scaleDelta = (distance * direction) / 200;
+          const newScale = Math.max(0.1, Math.min(5, resizeStartRef.current.scale + scaleDelta));
+          onPositionChange({
+            x: position.x,
+            y: position.y,
+            scale: newScale,
+          });
+        }
+      }
+    };
+    handleMouseUp.current = () => {
+      isDraggingRef.current = false;
+      isResizingRef.current = false;
+      dragStartRef.current = null;
+      resizeStartRef.current = null;
+    };
+  }, [position, onPositionChange]);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target === containerRef.current || target.classList.contains('ImageDisplay') || target.closest('.ImageDisplay') === containerRef.current) {
+      if (target.closest('.ImageResizeHandle')) {
+        return;
+      }
+      e.preventDefault();
+      isDraggingRef.current = true;
+      dragStartRef.current = {
+        x: e.clientX - position.x,
+        y: e.clientY - position.y,
+      };
+      
+      const handleMouseMoveGlobal = (e: MouseEvent) => {
+        handleMouseMove.current(e);
+      };
+      const handleMouseUpGlobal = () => {
+        handleMouseUp.current();
+        window.removeEventListener('mousemove', handleMouseMoveGlobal);
+        window.removeEventListener('mouseup', handleMouseUpGlobal);
+      };
+      
+      window.addEventListener('mousemove', handleMouseMoveGlobal);
+      window.addEventListener('mouseup', handleMouseUpGlobal);
+    }
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    const newScale = Math.max(0.1, Math.min(5, position.scale + delta));
+    onPositionChange({
+      x: position.x,
+      y: position.y,
+      scale: newScale,
+    });
+  };
+
+  const handleResizeMouseDown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    isResizingRef.current = true;
+    const containerRect = containerRef.current?.getBoundingClientRect();
+    resizeStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      scale: position.scale,
+      initialDistance: containerRect ? Math.sqrt(
+        Math.pow(containerRect.right - e.clientX, 2) + 
+        Math.pow(containerRect.bottom - e.clientY, 2)
+      ) : 0,
+    };
+    
+    const handleMouseMoveGlobal = (e: MouseEvent) => {
+      handleMouseMove.current(e);
+    };
+    const handleMouseUpGlobal = () => {
+      handleMouseUp.current();
+      window.removeEventListener('mousemove', handleMouseMoveGlobal);
+      window.removeEventListener('mouseup', handleMouseUpGlobal);
+    };
+    
+    window.addEventListener('mousemove', handleMouseMoveGlobal);
+    window.addEventListener('mouseup', handleMouseUpGlobal);
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      className="ImageDisplay"
+      style={{
+        position: 'absolute',
+        left: `${position.x}px`,
+        top: `${position.y}px`,
+        transform: `scale(${position.scale})`,
+        transformOrigin: 'top left',
+        zIndex: 15,
+        pointerEvents: 'auto',
+        border: '2px solid rgba(255, 255, 255, 0.5)',
+        borderRadius: '4px',
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        padding: '4px',
+        cursor: isDraggingRef.current ? 'grabbing' : 'grab',
+      }}
+      onMouseDown={handleMouseDown}
+      onWheel={handleWheel}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '4px',
+          padding: '2px 4px',
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          borderRadius: '2px',
+        }}
+      >
+        <span style={{ color: 'white', fontSize: '12px', userSelect: 'none' }}>{name}</span>
+      </div>
+      <div
+        style={{
+          position: 'relative',
+          backgroundColor: 'white',
+          display: 'inline-block',
+        }}
+      >
+        <img
+          src={imageData.imageUrl}
+          alt={name}
+          style={{
+            maxWidth: '400px',
+            maxHeight: '300px',
+            display: 'block',
+            userSelect: 'none',
+            pointerEvents: 'none',
+            opacity: 1,
+            backgroundColor: 'white',
+          }}
+          draggable={false}
+        />
+        <div
+          className="ImageResizeHandle"
+          onMouseDown={handleResizeMouseDown}
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            right: 0,
+            width: '20px',
+            height: '20px',
+            backgroundColor: 'rgba(255, 255, 255, 0.8)',
+            cursor: 'nwse-resize',
+            borderTopLeftRadius: '4px',
+            borderBottomRightRadius: '4px',
+            border: '2px solid rgba(0, 0, 0, 0.3)',
+            boxSizing: 'border-box',
+          }}
+        />
+      </div>
+    </div>
+  );
 }
 
 const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
@@ -67,7 +318,7 @@ const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     topic: null,
     messageType: null,
     enabled: true,
-    baseFrame: 'base_center',
+    baseFrame: 'base_link',
     mapFrame: 'map',
     followZoomFactor: 0.3, // 跟随机器人时的缩放倍数（越小越放大）
   },
@@ -127,6 +378,11 @@ export function MapView({ connection }: MapViewProps) {
       for (const [key, defaultConfig] of Object.entries(DEFAULT_LAYER_CONFIGS)) {
         merged[key] = { ...defaultConfig, ...saved[key] };
       }
+      for (const [key, config] of Object.entries(saved)) {
+        if (!DEFAULT_LAYER_CONFIGS[key] && config.id === 'image') {
+          merged[key] = config;
+        }
+      }
       return merged;
     }
     return DEFAULT_LAYER_CONFIGS;
@@ -159,6 +415,19 @@ export function MapView({ connection }: MapViewProps) {
     };
   } | null>(null);
   const raycasterRef = useRef<THREE.Raycaster | null>(null);
+  const [imageLayers, setImageLayers] = useState<Map<string, ImageLayerData>>(new Map());
+  const imagePositionsRef = useRef<Map<string, { x: number; y: number; scale: number }>>(new Map());
+  
+  useEffect(() => {
+    const saved = loadImagePositions();
+    if (saved) {
+      const map = new Map<string, { x: number; y: number; scale: number }>();
+      for (const [layerId, position] of Object.entries(saved)) {
+        map.set(layerId, position);
+      }
+      imagePositionsRef.current = map;
+    }
+  }, []);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -332,7 +601,7 @@ export function MapView({ connection }: MapViewProps) {
         return;
       }
 
-      const baseFrame = (robotConfig as any).baseFrame || 'base_center';
+      const baseFrame = (robotConfig as any).baseFrame || 'base_link';
       const mapFrame = (robotConfig as any).mapFrame || 'map';
       const tf2js = TF2JS.getInstance();
       const transform = tf2js.findTransform(mapFrame, baseFrame);
@@ -359,7 +628,7 @@ export function MapView({ connection }: MapViewProps) {
         if (focusRobotRef.current) {
           const robotConfig = layerConfigsRef.current.robot;
           if (robotConfig) {
-            const baseFrame = (robotConfig as any).baseFrame || 'base_center';
+            const baseFrame = (robotConfig as any).baseFrame || 'base_link';
             const mapFrame = (robotConfig as any).mapFrame || 'map';
             const tf2js = TF2JS.getInstance();
             const transform = tf2js.findTransform(mapFrame, baseFrame);
@@ -493,17 +762,82 @@ export function MapView({ connection }: MapViewProps) {
   const handleConfigChange = (layerId: string, config: Partial<import('../types/LayerConfig').LayerConfig>) => {
     setLayerConfigs((prev) => {
       const updated = { ...prev };
+      if (layerId === '' && Object.keys(config).length === 0) {
+        return prev;
+      }
       if (updated[layerId]) {
         updated[layerId] = { ...updated[layerId]!, ...config };
+      } else if (Object.keys(config).length > 0) {
+        updated[layerId] = config as import('../types/LayerConfig').LayerConfig;
       }
-      saveLayerConfigs(updated);
-      return updated;
+      const filtered = Object.fromEntries(
+        Object.entries(updated).filter(([_, cfg]) => cfg !== undefined)
+      );
+      saveLayerConfigs(filtered);
+      return filtered;
     });
   };
 
   useEffect(() => {
     focusRobotRef.current = focusRobot;
   }, [focusRobot]);
+
+  useEffect(() => {
+    const handleImageUpdate = (event: CustomEvent) => {
+      const { layerId: configId, imageUrl, width, height } = event.detail;
+      if (imageUrl) {
+        const matchingLayerId = Object.keys(layerConfigs).find(
+          (id) => layerConfigs[id]?.id === configId
+        );
+        if (matchingLayerId) {
+          setImageLayers((prev) => {
+            const next = new Map(prev);
+            next.set(matchingLayerId, { imageUrl, width, height, layerId: matchingLayerId });
+            return next;
+          });
+          if (!imagePositionsRef.current.has(matchingLayerId)) {
+            const savedPositions = loadImagePositions();
+            const savedPosition = savedPositions?.[matchingLayerId];
+            if (savedPosition) {
+              imagePositionsRef.current.set(matchingLayerId, savedPosition);
+            } else {
+              imagePositionsRef.current.set(matchingLayerId, { x: 100, y: 100, scale: 1 });
+            }
+          }
+        }
+      }
+    };
+
+    window.addEventListener('imageLayerUpdate', handleImageUpdate as EventListener);
+    return () => {
+      window.removeEventListener('imageLayerUpdate', handleImageUpdate as EventListener);
+    };
+  }, [layerConfigs]);
+
+  useEffect(() => {
+    const imageLayerIds = new Set(imageLayers.keys());
+    const configLayerIds = new Set(
+      Object.entries(layerConfigs)
+        .filter(([_, config]) => config.id === 'image')
+        .map(([id]) => id)
+    );
+    
+    for (const layerId of imageLayerIds) {
+      if (!configLayerIds.has(layerId) || !layerConfigs[layerId]?.enabled) {
+        setImageLayers((prev) => {
+          const next = new Map(prev);
+          next.delete(layerId);
+          return next;
+        });
+        imagePositionsRef.current.delete(layerId);
+        const positionsMap: ImagePositionsMap = {};
+        imagePositionsRef.current.forEach((pos, id) => {
+          positionsMap[id] = pos;
+        });
+        saveImagePositions(positionsMap);
+      }
+    }
+  }, [layerConfigs, imageLayers]);
 
   useEffect(() => {
     viewModeRef.current = viewMode;
@@ -709,6 +1043,20 @@ export function MapView({ connection }: MapViewProps) {
             saveLayerConfigs(DEFAULT_LAYER_CONFIGS);
           }}
           onClose={() => setShowSettings(false)}
+          onDeleteLayer={(layerId) => {
+            setLayerConfigs((prev) => {
+              const updated = { ...prev };
+              delete updated[layerId];
+              saveLayerConfigs(updated);
+              return updated;
+            });
+            imagePositionsRef.current.delete(layerId);
+            const positionsMap: ImagePositionsMap = {};
+            imagePositionsRef.current.forEach((pos, id) => {
+              positionsMap[id] = pos;
+            });
+            saveImagePositions(positionsMap);
+          }}
           onUrdfConfigChange={async () => {
             const robotLayer = layerManagerRef.current?.getLayer('robot');
             if (robotLayer && 'reloadUrdf' in robotLayer) {
@@ -822,6 +1170,28 @@ export function MapView({ connection }: MapViewProps) {
         </div>
       )}
       <canvas ref={canvasRef} className="MapCanvas" />
+      {Array.from(imageLayers.entries())
+        .filter(([layerId]) => layerConfigs[layerId]?.enabled)
+        .map(([layerId, imageData]) => {
+          const config = layerConfigs[layerId];
+          const position = imagePositionsRef.current.get(layerId) || { x: 100, y: 100, scale: 1 };
+          return (
+            <ImageDisplay
+              key={layerId}
+              imageData={imageData}
+              name={config?.name || layerId}
+              position={position}
+              onPositionChange={(newPos) => {
+                imagePositionsRef.current.set(layerId, newPos);
+                const positionsMap: ImagePositionsMap = {};
+                imagePositionsRef.current.forEach((pos, id) => {
+                  positionsMap[id] = pos;
+                });
+                saveImagePositions(positionsMap);
+              }}
+            />
+          );
+        })}
       <div className="CoordinateDisplay">
         <div className="CoordinateRow">
           <span className="CoordinateLabel">鼠标:</span>

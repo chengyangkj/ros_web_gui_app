@@ -8,6 +8,7 @@ import { PathLayer } from './PathLayer';
 import { FootprintLayer } from './FootprintLayer';
 import { TFLayer } from './TFLayer';
 import { TopoLayer } from './TopoLayer';
+import { ImageLayer } from './ImageLayer';
 import type { LayerConfig, LayerConfigMap } from '../../types/LayerConfig';
 import { RosbridgeConnection } from '../../utils/RosbridgeConnection';
 
@@ -104,6 +105,9 @@ export class LayerManager {
         break;
       case 'topology':
         layer = new TopoLayer(this.scene, config, this.connection);
+        break;
+      case 'image':
+        layer = new ImageLayer(this.scene, config, this.connection);
         break;
       default:
         console.warn(`Unknown layer type: ${config.id}`);
