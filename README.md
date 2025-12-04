@@ -52,9 +52,18 @@
 
 ### macOS
 
-**使用 Homebrew（推荐）：**
+
 ```bash
-brew install node
+# 下载并安装 nvm：
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+# 代替重启 shell
+\. "$HOME/.nvm/nvm.sh"
+# 下载并安装 Node.js：
+nvm install 24
+# 验证 Node.js 版本：
+node -v # Should print "v24.11.1".
+# 验证 npm 版本：
+npm -v # Should print "11.6.2".
 ```
 
 **或下载安装包：**
