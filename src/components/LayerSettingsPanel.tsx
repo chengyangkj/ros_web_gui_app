@@ -456,6 +456,153 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
             </div>
           )}
         </div>
+        {/* 重定位管理部分 */}
+        <div className="LayerItem">
+          <div className="LayerItemHeader" onClick={() => toggleLayer('initialpose')}>
+            <span className="LayerName">重定位</span>
+            <div className="LayerControls">
+              <span className="ExpandIcon">{expandedLayers.has('initialpose') ? '▼' : '▶'}</span>
+            </div>
+          </div>
+          {expandedLayers.has('initialpose') && (
+            <div className="LayerItemDetails" onClick={(e) => e.stopPropagation()}>
+              {Object.entries(layerConfigs)
+                .filter(([_, config]) => config.id === 'initialpose')
+                .map(([layerId, config]) => (
+                  <div key={layerId}>
+                    <div className="DetailRow">
+                      <span className="DetailLabel">话题:</span>
+                      {isEditing(layerId, 'topic') ? (
+                        <input
+                          className="DetailInput"
+                          type="text"
+                          value={getEditingValue(layerId, 'topic', config.topic)}
+                          onChange={(e) => updateEditingValue(layerId, 'topic', e.target.value)}
+                          onBlur={() => {
+                            const value = getEditingValue(layerId, 'topic', config.topic);
+                            handleFieldChange(layerId, 'topic', value || null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const value = getEditingValue(layerId, 'topic', config.topic);
+                              handleFieldChange(layerId, 'topic', value || null);
+                            }
+                            if (e.key === 'Escape') {
+                              setEditingFields((prev) => {
+                                const next = new Map(prev);
+                                next.delete(`${layerId}_topic`);
+                                return next;
+                              });
+                              setEditingValues((prev) => {
+                                const next = new Map(prev);
+                                next.delete(`${layerId}_topic`);
+                                return next;
+                              });
+                            }
+                          }}
+                          autoFocus
+                        />
+                      ) : (
+                        <span
+                          className="DetailValue"
+                          onClick={() => startEditing(layerId, 'topic', config.topic)}
+                        >
+                          {config.topic || '-'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="DetailRow">
+                      <span className="DetailLabel">Base Frame:</span>
+                      {isEditing(layerId, 'baseFrame') ? (
+                        <input
+                          className="DetailInput"
+                          type="text"
+                          value={getEditingValue(layerId, 'baseFrame', (config as any).baseFrame)}
+                          onChange={(e) => updateEditingValue(layerId, 'baseFrame', e.target.value)}
+                          onBlur={() => {
+                            const value = getEditingValue(layerId, 'baseFrame', (config as any).baseFrame);
+                            handleFieldChange(layerId, 'baseFrame', value || null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const value = getEditingValue(layerId, 'baseFrame', (config as any).baseFrame);
+                              handleFieldChange(layerId, 'baseFrame', value || null);
+                            }
+                            if (e.key === 'Escape') {
+                              setEditingFields((prev) => {
+                                const next = new Map(prev);
+                                next.delete(`${layerId}_baseFrame`);
+                                return next;
+                              });
+                              setEditingValues((prev) => {
+                                const next = new Map(prev);
+                                next.delete(`${layerId}_baseFrame`);
+                                return next;
+                              });
+                            }
+                          }}
+                          autoFocus
+                        />
+                      ) : (
+                        <span
+                          className="DetailValue"
+                          onClick={() => startEditing(layerId, 'baseFrame', (config as any).baseFrame)}
+                        >
+                          {(config as any).baseFrame || '-'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="DetailRow">
+                      <span className="DetailLabel">Map Frame:</span>
+                      {isEditing(layerId, 'mapFrame') ? (
+                        <input
+                          className="DetailInput"
+                          type="text"
+                          value={getEditingValue(layerId, 'mapFrame', (config as any).mapFrame)}
+                          onChange={(e) => updateEditingValue(layerId, 'mapFrame', e.target.value)}
+                          onBlur={() => {
+                            const value = getEditingValue(layerId, 'mapFrame', (config as any).mapFrame);
+                            handleFieldChange(layerId, 'mapFrame', value || null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const value = getEditingValue(layerId, 'mapFrame', (config as any).mapFrame);
+                              handleFieldChange(layerId, 'mapFrame', value || null);
+                            }
+                            if (e.key === 'Escape') {
+                              setEditingFields((prev) => {
+                                const next = new Map(prev);
+                                next.delete(`${layerId}_mapFrame`);
+                                return next;
+                              });
+                              setEditingValues((prev) => {
+                                const next = new Map(prev);
+                                next.delete(`${layerId}_mapFrame`);
+                                return next;
+                              });
+                            }
+                          }}
+                          autoFocus
+                        />
+                      ) : (
+                        <span
+                          className="DetailValue"
+                          onClick={() => startEditing(layerId, 'mapFrame', (config as any).mapFrame)}
+                        >
+                          {(config as any).mapFrame || '-'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              {Object.entries(layerConfigs).filter(([_, config]) => config.id === 'initialpose').length === 0 && (
+                <div style={{ padding: '10px', color: 'rgba(255, 255, 255, 0.5)' }}>
+                  <p>暂无重定位配置</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         {/* 图片管理部分 */}
         <div className="LayerItem">
           <div className="LayerItemHeader" onClick={() => toggleLayer('images')}>

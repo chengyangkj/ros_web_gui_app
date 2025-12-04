@@ -105,5 +105,14 @@ export const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     linearYSpeed: 0.5,
     angularZSpeed: 0.5,
   },
+  initialpose: {
+    id: 'initialpose',
+    name: '重定位',
+    topic: '/initialpose',
+    messageType: 'geometry_msgs/PoseWithCovarianceStamped',
+    enabled: true,
+    baseFrame: 'base_link',
+    mapFrame: 'map',
+  },
 };
 

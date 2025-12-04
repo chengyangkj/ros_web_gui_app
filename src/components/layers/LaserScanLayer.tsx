@@ -27,11 +27,15 @@ export class LaserScanLayer extends BaseLayer {
   private points: THREE.Points | null = null;
   private tf2js: TF2JS;
   private targetFrame: string;
+  private relocalizeMode: boolean = false;
+  private relocalizePosition: { x: number; y: number; theta: number } | null = null;
+  private baseFrame: string = 'base_link';
 
   constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
     this.tf2js = TF2JS.getInstance();
     this.targetFrame = (config.targetFrame as string | undefined) || 'map';
+    this.baseFrame = (config.baseFrame as string | undefined) || 'base_link';
     if (config.topic) {
       this.subscribe(config.topic, this.getMessageType());
     }
@@ -77,12 +81,27 @@ export class LaserScanLayer extends BaseLayer {
     }
 
     let transformedPoints: THREE.Vector3[] = points;
-    if (sourceFrame !== this.targetFrame) {
-      const transformMatrix = this.tf2js.getTransformMatrix(sourceFrame, this.targetFrame);
-      if (transformMatrix) {
-        transformedPoints = points.map(point => point.clone().applyMatrix4(transformMatrix));
-      } else {
+    
+    if (this.relocalizeMode && this.relocalizePosition) {
+      const transformToBaseFrame = this.tf2js.getTransformMatrix(sourceFrame, this.baseFrame);
+      if (!transformToBaseFrame) {
         return;
+      }
+      const pointsInBaseFrame = points.map(point => point.clone().applyMatrix4(transformToBaseFrame));
+      
+      const robotMatrix = new THREE.Matrix4();
+      robotMatrix.makeRotationZ(this.relocalizePosition.theta);
+      robotMatrix.setPosition(this.relocalizePosition.x, this.relocalizePosition.y, 0);
+      
+      transformedPoints = pointsInBaseFrame.map(point => point.clone().applyMatrix4(robotMatrix));
+    } else {
+      if (sourceFrame !== this.targetFrame) {
+        const transformMatrix = this.tf2js.getTransformMatrix(sourceFrame, this.targetFrame);
+        if (transformMatrix) {
+          transformedPoints = points.map(point => point.clone().applyMatrix4(transformMatrix));
+        } else {
+          return;
+        }
       }
     }
 
@@ -92,6 +111,22 @@ export class LaserScanLayer extends BaseLayer {
     this.points = pointsMesh;
     this.object3D = pointsMesh;
     this.scene.add(pointsMesh);
+  }
+
+  setConfig(config: LayerConfig): void {
+    super.setConfig(config);
+    const cfg = config as LayerConfig & { baseFrame?: string; targetFrame?: string };
+    if (cfg.baseFrame) {
+      this.baseFrame = cfg.baseFrame;
+    }
+    if (cfg.targetFrame) {
+      this.targetFrame = cfg.targetFrame;
+    }
+  }
+  
+  public setRelocalizeMode(enabled: boolean, position: { x: number; y: number; theta: number } | null): void {
+    this.relocalizeMode = enabled;
+    this.relocalizePosition = position;
   }
 
   dispose(): void {

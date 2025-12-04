@@ -19,6 +19,8 @@ export class RobotLayer extends BaseLayer {
   private updateInterval: ReturnType<typeof setInterval> | null = null;
   private iconMesh: THREE.Mesh | null = null;
   private isLoadingUrdf: boolean = false;
+  private relocalizeMode: boolean = false;
+  private relocalizePosition: { x: number; y: number; theta: number } | null = null;
 
   constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
@@ -463,6 +465,17 @@ export class RobotLayer extends BaseLayer {
       return;
     }
 
+    if (this.relocalizeMode && this.relocalizePosition) {
+      this.robotGroup.position.set(
+        this.relocalizePosition.x,
+        this.relocalizePosition.y,
+        0
+      );
+      const quaternion = new THREE.Quaternion();
+      quaternion.setFromEuler(new THREE.Euler(0, 0, this.relocalizePosition.theta, 'XYZ'));
+      this.robotGroup.quaternion.copy(quaternion);
+      return;
+    }
  
     const transform = this.tf2js.findTransform( this.mapFrame, this.baseFrame);
     if (transform) {
@@ -479,6 +492,52 @@ export class RobotLayer extends BaseLayer {
         baseFrame: this.baseFrame,
         availableFrames: this.tf2js.getFrames()
       });
+    }
+  }
+  
+  public setRelocalizeMode(enabled: boolean, position: { x: number; y: number; theta: number } | null): void {
+    this.relocalizeMode = enabled;
+    this.relocalizePosition = position;
+    if (this.relocalizeMode) {
+      if (this.updateInterval) {
+        clearInterval(this.updateInterval);
+        this.updateInterval = null;
+      }
+      if (this.transformChangeUnsubscribe) {
+        this.transformChangeUnsubscribe();
+        this.transformChangeUnsubscribe = null;
+      }
+      if (this.robotGroup) {
+        this.robotGroup.userData.isRobot = true;
+        this.robotGroup.traverse((child) => {
+          child.userData.isRobot = true;
+        });
+      }
+    } else {
+      if (!this.updateInterval) {
+        this.updateInterval = setInterval(() => {
+          this.updateRobotTransform();
+        }, 100);
+      }
+      if (!this.transformChangeUnsubscribe) {
+        this.transformChangeUnsubscribe = this.tf2js.onTransformChange(() => {
+          this.updateRobotTransform();
+        });
+      }
+      if (this.robotGroup) {
+        this.robotGroup.userData.isRobot = false;
+        this.robotGroup.traverse((child) => {
+          child.userData.isRobot = false;
+        });
+      }
+    }
+    this.updateRobotTransform();
+  }
+  
+  public setRelocalizePosition(position: { x: number; y: number; theta: number }): void {
+    if (this.relocalizeMode) {
+      this.relocalizePosition = position;
+      this.updateRobotTransform();
     }
   }
 

@@ -78,6 +78,15 @@ export function MapView({ connection }: MapViewProps) {
   const activeKeysRef = useRef<Set<string>>(new Set());
   const cmdVelTopicRef = useRef<string>('/cmd_vel');
   const cmdVelIntervalRef = useRef<number | null>(null);
+  const [relocalizeMode, setRelocalizeMode] = useState(false);
+  const relocalizeModeRef = useRef(false);
+  const relocalizeRobotPosRef = useRef<{ x: number; y: number; theta: number } | null>(null);
+  const isDraggingRobotRef = useRef(false);
+  const isRotatingRobotRef = useRef(false);
+  const initialposeTopicRef = useRef<string>('/initialpose');
+  const relocalizeButtonRef = useRef<HTMLButtonElement>(null);
+  const relocalizeControlsRef = useRef<HTMLDivElement>(null);
+  const [relocalizeControlsStyle, setRelocalizeControlsStyle] = useState<React.CSSProperties>({});
   
   useEffect(() => {
     const saved = loadLayerConfigs();
@@ -85,12 +94,19 @@ export function MapView({ connection }: MapViewProps) {
       const cmdVelConfig = Object.values(saved).find(config => config.id === 'cmd_vel');
       if (cmdVelConfig && cmdVelConfig.topic) {
         cmdVelTopicRef.current = cmdVelConfig.topic as string;
-        return;
+      }
+      const initialposeConfig = Object.values(saved).find(config => config.id === 'initialpose');
+      if (initialposeConfig && initialposeConfig.topic) {
+        initialposeTopicRef.current = initialposeConfig.topic as string;
       }
     }
-    const defaultConfig = DEFAULT_LAYER_CONFIGS.cmd_vel;
-    if (defaultConfig && defaultConfig.topic) {
-      cmdVelTopicRef.current = defaultConfig.topic as string;
+    const defaultCmdVelConfig = DEFAULT_LAYER_CONFIGS.cmd_vel;
+    if (defaultCmdVelConfig && defaultCmdVelConfig.topic) {
+      cmdVelTopicRef.current = defaultCmdVelConfig.topic as string;
+    }
+    const defaultInitialposeConfig = DEFAULT_LAYER_CONFIGS.initialpose;
+    if (defaultInitialposeConfig && defaultInitialposeConfig.topic) {
+      initialposeTopicRef.current = defaultInitialposeConfig.topic as string;
     }
   }, []);
   
@@ -162,6 +178,10 @@ export function MapView({ connection }: MapViewProps) {
     const handleClick = (event: MouseEvent) => {
       if (!camera || !scene || !canvas) return;
       
+      if (relocalizeMode) {
+        return;
+      }
+      
       const rect = canvas.getBoundingClientRect();
       const mouse = new THREE.Vector2();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -231,6 +251,56 @@ export function MapView({ connection }: MapViewProps) {
     };
 
     canvas.addEventListener('click', handleClick);
+    
+    const handleMouseDown = (event: MouseEvent) => {
+      if (!relocalizeModeRef.current || !camera || !canvas || !scene) return;
+      
+      const rect = canvas.getBoundingClientRect();
+      const mouse = new THREE.Vector2();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObjects(scene.children, true);
+      
+      for (const intersect of intersects) {
+        let obj = intersect.object;
+        while (obj) {
+          if (obj.userData.isRobot) {
+            console.log('[MapView] Robot clicked, starting drag/rotate');
+            if (event.button === 0) {
+              isDraggingRobotRef.current = true;
+              const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+              const intersectPoint = new THREE.Vector3();
+              raycaster.ray.intersectPlane(plane, intersectPoint);
+              if (relocalizeRobotPosRef.current) {
+                relocalizeRobotPosRef.current.x = intersectPoint.x;
+                relocalizeRobotPosRef.current.y = intersectPoint.y;
+                console.log('[MapView] Robot position set to:', relocalizeRobotPosRef.current);
+              }
+            } else if (event.button === 2) {
+              isRotatingRobotRef.current = true;
+              console.log('[MapView] Robot rotation started');
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
+          obj = obj.parent as THREE.Object3D;
+        }
+      }
+    };
+    
+    const handleMouseUp = () => {
+      isDraggingRobotRef.current = false;
+      isRotatingRobotRef.current = false;
+    };
+    
+    const handleContextMenu = (event: MouseEvent) => {
+      if (relocalizeModeRef.current) {
+        event.preventDefault();
+      }
+    };
 
     const handleMouseMove = (event: MouseEvent) => {
       if (!camera || !canvas) return;
@@ -245,14 +315,65 @@ export function MapView({ connection }: MapViewProps) {
       const intersectPoint = new THREE.Vector3();
       raycaster.ray.intersectPlane(plane, intersectPoint);
       
+      if (relocalizeModeRef.current) {
+        if (isDraggingRobotRef.current && relocalizeRobotPosRef.current) {
+          relocalizeRobotPosRef.current.x = intersectPoint.x;
+          relocalizeRobotPosRef.current.y = intersectPoint.y;
+          const robotLayer = layerManagerRef.current?.getLayer('robot');
+          if (robotLayer && 'setRelocalizePosition' in robotLayer) {
+            (robotLayer as any).setRelocalizePosition(relocalizeRobotPosRef.current);
+          }
+          const laserScanLayer = layerManagerRef.current?.getLayer('laser_scan');
+          if (laserScanLayer && 'setRelocalizeMode' in laserScanLayer) {
+            (laserScanLayer as any).setRelocalizeMode(true, relocalizeRobotPosRef.current);
+          }
+        }
+      }
+      
       setMouseWorldPos({ x: intersectPoint.x, y: intersectPoint.y });
+    };
+    
+    const handleRightMouseMove = (event: MouseEvent) => {
+      if (!relocalizeModeRef.current || !isRotatingRobotRef.current || !camera || !canvas || !relocalizeRobotPosRef.current) return;
+      
+      const rect = canvas.getBoundingClientRect();
+      const mouse = new THREE.Vector2();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+      const intersectPoint = new THREE.Vector3();
+      raycaster.ray.intersectPlane(plane, intersectPoint);
+      
+      const dx = intersectPoint.x - relocalizeRobotPosRef.current.x;
+      const dy = intersectPoint.y - relocalizeRobotPosRef.current.y;
+      relocalizeRobotPosRef.current.theta = Math.atan2(dy, dx);
+      
+      const robotLayer = layerManagerRef.current?.getLayer('robot');
+      if (robotLayer && 'setRelocalizePosition' in robotLayer) {
+        (robotLayer as any).setRelocalizePosition(relocalizeRobotPosRef.current);
+      }
+      const laserScanLayer = layerManagerRef.current?.getLayer('laser_scan');
+      if (laserScanLayer && 'setRelocalizeMode' in laserScanLayer) {
+        (laserScanLayer as any).setRelocalizeMode(true, relocalizeRobotPosRef.current);
+      }
     };
 
     const handleMouseLeave = () => {
       setMouseWorldPos(null);
     };
-
-    canvas.addEventListener('mousemove', handleMouseMove);
+    
+    canvas.addEventListener('mousedown', handleMouseDown);
+    canvas.addEventListener('mouseup', handleMouseUp);
+    canvas.addEventListener('contextmenu', handleContextMenu);
+    const handleMouseMoveWrapper = (event: MouseEvent) => {
+      handleMouseMove(event);
+      if (event.buttons === 2) {
+        handleRightMouseMove(event);
+      }
+    };
+    canvas.addEventListener('mousemove', handleMouseMoveWrapper);
     canvas.addEventListener('mouseleave', handleMouseLeave);
 
     console.log('[MapView] Creating LayerManager');
@@ -379,7 +500,10 @@ export function MapView({ connection }: MapViewProps) {
     return () => {
       window.removeEventListener('resize', handleResize);
       canvas.removeEventListener('click', handleClick);
-      canvas.removeEventListener('mousemove', handleMouseMove);
+      canvas.removeEventListener('mousedown', handleMouseDown);
+      canvas.removeEventListener('mouseup', handleMouseUp);
+      canvas.removeEventListener('contextmenu', handleContextMenu);
+      canvas.removeEventListener('mousemove', handleMouseMoveWrapper);
       canvas.removeEventListener('mouseleave', handleMouseLeave);
       cancelAnimationFrame(animationFrameId);
       controls.dispose();
@@ -430,6 +554,10 @@ export function MapView({ connection }: MapViewProps) {
     const cmdVelConfig = Object.values(layerConfigs).find(config => config.id === 'cmd_vel');
     if (cmdVelConfig && cmdVelConfig.topic) {
       cmdVelTopicRef.current = cmdVelConfig.topic as string;
+    }
+    const initialposeConfig = Object.values(layerConfigs).find(config => config.id === 'initialpose');
+    if (initialposeConfig && initialposeConfig.topic) {
+      initialposeTopicRef.current = initialposeConfig.topic as string;
     }
   }, [layerConfigs]);
 
@@ -598,6 +726,125 @@ export function MapView({ connection }: MapViewProps) {
   }, [layerConfigs, imageLayers]);
 
   useEffect(() => {
+    relocalizeModeRef.current = relocalizeMode;
+    if (controlsRef.current) {
+      if (relocalizeMode) {
+        controlsRef.current.enablePan = false;
+        controlsRef.current.enableRotate = false;
+        controlsRef.current.enableZoom = true;
+      } else {
+        controlsRef.current.enablePan = true;
+        controlsRef.current.enableRotate = viewMode === '3d';
+        controlsRef.current.enableZoom = true;
+      }
+    }
+  }, [relocalizeMode, viewMode]);
+
+  useEffect(() => {
+    const updateRelocalizeControlsPosition = () => {
+      if (!relocalizeMode || !relocalizeButtonRef.current || !relocalizeControlsRef.current) {
+        return;
+      }
+
+      const buttonRect = relocalizeButtonRef.current.getBoundingClientRect();
+      
+      const buttonRight = window.innerWidth - buttonRect.right;
+      const buttonTop = buttonRect.top;
+      const gap = 10;
+      
+      setRelocalizeControlsStyle({
+        top: `${buttonTop}px`,
+        right: `${buttonRight + buttonRect.width + gap}px`,
+      });
+    };
+
+    if (relocalizeMode) {
+      updateRelocalizeControlsPosition();
+      
+      const handleResize = () => {
+        updateRelocalizeControlsPosition();
+      };
+      
+      window.addEventListener('resize', handleResize);
+      
+      const timeoutId = setTimeout(() => {
+        updateRelocalizeControlsPosition();
+      }, 100);
+      
+      return () => {
+        window.removeEventListener('resize', handleResize);
+        clearTimeout(timeoutId);
+      };
+    } else {
+      setRelocalizeControlsStyle({});
+    }
+  }, [relocalizeMode, layerConfigs]);
+
+  useEffect(() => {
+    if (relocalizeMode) {
+      const robotConfig = layerConfigsRef.current.robot;
+      if (robotConfig) {
+        const baseFrame = (robotConfig as any).baseFrame || 'base_link';
+        const mapFrame = (robotConfig as any).mapFrame || 'map';
+        const tf2js = TF2JS.getInstance();
+        const transform = tf2js.findTransform(mapFrame, baseFrame);
+        
+        if (transform) {
+          const robotEuler = new THREE.Euler();
+          robotEuler.setFromQuaternion(transform.rotation, 'XYZ');
+          const robotTheta = robotEuler.z;
+          
+          relocalizeRobotPosRef.current = {
+            x: transform.translation.x,
+            y: transform.translation.y,
+            theta: robotTheta,
+          };
+          
+          const robotLayer = layerManagerRef.current?.getLayer('robot');
+          if (robotLayer && 'setRelocalizeMode' in robotLayer) {
+            (robotLayer as any).setRelocalizeMode(true, relocalizeRobotPosRef.current);
+          }
+          
+          const laserScanLayer = layerManagerRef.current?.getLayer('laser_scan');
+          if (laserScanLayer && 'setRelocalizeMode' in laserScanLayer) {
+            (laserScanLayer as any).setRelocalizeMode(true, relocalizeRobotPosRef.current);
+          }
+        } else {
+          relocalizeRobotPosRef.current = { x: 0, y: 0, theta: 0 };
+          const robotLayer = layerManagerRef.current?.getLayer('robot');
+          if (robotLayer && 'setRelocalizeMode' in robotLayer) {
+            (robotLayer as any).setRelocalizeMode(true, relocalizeRobotPosRef.current);
+          }
+          
+          const laserScanLayer = layerManagerRef.current?.getLayer('laser_scan');
+          if (laserScanLayer && 'setRelocalizeMode' in laserScanLayer) {
+            (laserScanLayer as any).setRelocalizeMode(true, relocalizeRobotPosRef.current);
+          }
+        }
+      }
+    } else {
+      relocalizeRobotPosRef.current = null;
+      const robotLayer = layerManagerRef.current?.getLayer('robot');
+      if (robotLayer && 'setRelocalizeMode' in robotLayer) {
+        (robotLayer as any).setRelocalizeMode(false, null);
+      }
+      const laserScanLayer = layerManagerRef.current?.getLayer('laser_scan');
+      if (laserScanLayer && 'setRelocalizeMode' in laserScanLayer) {
+        (laserScanLayer as any).setRelocalizeMode(false, null);
+      }
+    }
+  }, [relocalizeMode]);
+  
+  useEffect(() => {
+    if (relocalizeMode && relocalizeRobotPosRef.current) {
+      const laserScanLayer = layerManagerRef.current?.getLayer('laser_scan');
+      if (laserScanLayer && 'setRelocalizeMode' in laserScanLayer) {
+        (laserScanLayer as any).setRelocalizeMode(true, relocalizeRobotPosRef.current);
+      }
+    }
+  }, [relocalizeRobotPosRef.current, relocalizeMode]);
+
+  useEffect(() => {
     viewModeRef.current = viewMode;
     
     if (!controlsRef.current || !cameraRef.current) {
@@ -698,6 +945,118 @@ export function MapView({ connection }: MapViewProps) {
       toast.error('全屏操作失败');
     }
   };
+  
+  const handleRelocalizeToggle = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const newMode = !relocalizeMode;
+    setRelocalizeMode(newMode);
+    if (newMode) {
+      if (viewMode !== '2d') {
+        setViewMode('2d');
+        viewModeRef.current = '2d';
+      }
+      
+      setTimeout(() => {
+        if (!controlsRef.current || !cameraRef.current) return;
+        
+        const robotConfig = layerConfigsRef.current.robot;
+        if (robotConfig) {
+          const baseFrame = (robotConfig as any).baseFrame || 'base_link';
+          const mapFrame = (robotConfig as any).mapFrame || 'map';
+          const tf2js = TF2JS.getInstance();
+          const transform = tf2js.findTransform(mapFrame, baseFrame);
+          
+          if (transform) {
+            const controls = controlsRef.current;
+            const camera = cameraRef.current;
+            
+            controls.target.set(
+              transform.translation.x,
+              transform.translation.y,
+              0
+            );
+            
+            const distance = Math.max(10, camera.position.distanceTo(controls.target));
+            camera.position.set(
+              controls.target.x,
+              controls.target.y,
+              controls.target.z + distance
+            );
+            camera.up.set(0, 0, 1);
+            camera.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0, 'XYZ'));
+            
+            controls.update();
+          } else if (relocalizeRobotPosRef.current) {
+            const controls = controlsRef.current;
+            const camera = cameraRef.current;
+            const pos = relocalizeRobotPosRef.current;
+            
+            controls.target.set(pos.x, pos.y, 0);
+            
+            const distance = Math.max(10, camera.position.distanceTo(controls.target));
+            camera.position.set(
+              controls.target.x,
+              controls.target.y,
+              controls.target.z + distance
+            );
+            camera.up.set(0, 0, 1);
+            camera.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0, 'XYZ'));
+            
+            controls.update();
+          }
+        }
+      }, 100);
+    }
+  };
+  
+  const handleRelocalizeConfirm = () => {
+    if (!relocalizeRobotPosRef.current || !connection.isConnected()) {
+      toast.error('无法发布初始化位姿');
+      return;
+    }
+    
+    const pos = relocalizeRobotPosRef.current;
+    const quaternion = new THREE.Quaternion();
+    quaternion.setFromEuler(new THREE.Euler(0, 0, pos.theta, 'XYZ'));
+    
+    const robotConfig = layerConfigsRef.current.robot;
+    const mapFrame = (robotConfig as any)?.mapFrame || 'map';
+    
+    const message = {
+      header: {
+        stamp: {
+          sec: Math.floor(Date.now() / 1000),
+          nanosec: (Date.now() % 1000) * 1000000,
+        },
+        frame_id: mapFrame,
+      },
+      pose: {
+        pose: {
+          position: {
+            x: pos.x,
+            y: pos.y,
+            z: 0,
+          },
+          orientation: {
+            x: quaternion.x,
+            y: quaternion.y,
+            z: quaternion.z,
+            w: quaternion.w,
+          },
+        },
+        covariance: new Array(36).fill(0),
+      },
+    };
+    
+    connection.publish(initialposeTopicRef.current, 'geometry_msgs/PoseWithCovarianceStamped', message);
+    toast.success('初始化位姿已发布');
+    setRelocalizeMode(false);
+  };
+  
+  const handleRelocalizeCancel = () => {
+    setRelocalizeMode(false);
+  };
 
 
   useEffect(() => {
@@ -755,7 +1114,34 @@ export function MapView({ connection }: MapViewProps) {
         >
           🎮
         </button>
+        <button
+          ref={relocalizeButtonRef}
+          className={`SettingsButton ${relocalizeMode ? 'active' : ''}`}
+          onClick={handleRelocalizeToggle}
+          title={relocalizeMode ? '退出重定位' : '重定位'}
+          type="button"
+        >
+          📍
+        </button>
       </div>
+      {relocalizeMode && (
+        <div ref={relocalizeControlsRef} className="RelocalizeControls" style={relocalizeControlsStyle}>
+          <button
+            className="RelocalizeButton ConfirmButton"
+            onClick={handleRelocalizeConfirm}
+            type="button"
+          >
+            确定
+          </button>
+          <button
+            className="RelocalizeButton CancelButton"
+            onClick={handleRelocalizeCancel}
+            type="button"
+          >
+            取消
+          </button>
+        </div>
+      )}
       {manualControlMode && (
         <ManualControlPanel
           layerConfigs={layerConfigs}
@@ -864,14 +1250,23 @@ export function MapView({ connection }: MapViewProps) {
               : '-'}
           </span>
         </div>
-        <div className="CoordinateRow">
-          <span className="CoordinateLabel">机器人:</span>
-          <span className="CoordinateValue">
-            {robotPos
-              ? `X: ${robotPos.x.toFixed(3)}, Y: ${robotPos.y.toFixed(3)}, θ: ${robotPos.theta.toFixed(3)}`
-              : '-'}
-          </span>
-        </div>
+        {relocalizeMode && relocalizeRobotPosRef.current ? (
+          <div className="CoordinateRow">
+            <span className="CoordinateLabel">重定位位置:</span>
+            <span className="CoordinateValue">
+              X: {relocalizeRobotPosRef.current.x.toFixed(3)}, Y: {relocalizeRobotPosRef.current.y.toFixed(3)}, θ: {relocalizeRobotPosRef.current.theta.toFixed(3)}
+            </span>
+          </div>
+        ) : (
+          <div className="CoordinateRow">
+            <span className="CoordinateLabel">机器人:</span>
+            <span className="CoordinateValue">
+              {robotPos
+                ? `X: ${robotPos.x.toFixed(3)}, Y: ${robotPos.y.toFixed(3)}, θ: ${robotPos.theta.toFixed(3)}`
+                : '-'}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );
