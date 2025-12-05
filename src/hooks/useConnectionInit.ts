@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { toast } from 'react-toastify';
 import type { RosbridgeConnection } from '../utils/RosbridgeConnection';
 import { TF2JS } from '../utils/tf2js';
@@ -44,7 +44,6 @@ export function useConnectionInit(
     return () => {
       const mapManager = MapManager.getInstance();
       mapManager.disconnect();
-      TF2JS.getInstance().disconnect();
     };
   }, [connection, layerManagerRef, layerConfigs]);
 }

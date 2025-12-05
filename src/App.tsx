@@ -4,6 +4,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import { ConnectionPage } from './components/ConnectionPage';
 import { MapView } from './components/MapView';
 import { RosbridgeConnection } from './utils/RosbridgeConnection';
+import { TF2JS } from './utils/tf2js';
 import './App.css';
 
 function App() {
@@ -57,6 +58,7 @@ function App() {
       } else {
         if (connected && connection) {
           connection.disconnect();
+          TF2JS.getInstance().disconnect();
           setConnection(null);
           setConnected(false);
         }

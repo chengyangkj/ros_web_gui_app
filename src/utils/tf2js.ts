@@ -77,7 +77,17 @@ export class TF2JS {
       return;
     }
 
-    this.disconnect();
+    if (this.connection && this.connection !== connection) {
+      if (this.tfUnsubscribe) {
+        this.tfUnsubscribe();
+        this.tfUnsubscribe = null;
+      }
+      if (this.tfStaticUnsubscribe) {
+        this.tfStaticUnsubscribe();
+        this.tfStaticUnsubscribe = null;
+      }
+    }
+
     this.connection = connection;
 
     if (!connection.isConnected()) {

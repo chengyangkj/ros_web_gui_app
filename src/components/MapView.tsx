@@ -92,11 +92,11 @@ export function MapView({ connection }: MapViewProps) {
   const initialposeTopicRef = useRef<string>('/initialpose');
   const relocalizeButtonRef = useRef<HTMLButtonElement>(null);
   const relocalizeControlsRef = useRef<HTMLDivElement>(null);
-  
+
   useInitialization(cmdVelTopicRef, initialposeTopicRef, imagePositionsRef);
-  
+
   const imageLayers = useImageLayers(layerConfigs, imagePositionsRef);
-  
+
   const relocalizeControlsStyle = useRelocalizeMode(
     relocalizeMode,
     viewMode,
@@ -108,7 +108,7 @@ export function MapView({ connection }: MapViewProps) {
     relocalizeRobotPosRef,
     relocalizeModeRef
   );
-  
+
   useViewMode(viewMode, viewModeRef, controlsRef, cameraRef);
 
   useEffect(() => {
@@ -133,7 +133,7 @@ export function MapView({ connection }: MapViewProps) {
     scene.add(directionalLight2);
 
     THREE.Object3D.DEFAULT_UP = new THREE.Vector3(0, 0, 1);
-    
+
     const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
     camera.position.set(0, 0, 10);
     camera.up.set(0, 0, 1);
@@ -157,9 +157,9 @@ export function MapView({ connection }: MapViewProps) {
     controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
     controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
     (controls as any).zoomToCursor = true;
-    
+
     controls.update();
-    
+
     controlsRef.current = controls;
 
     const raycaster = new THREE.Raycaster();
@@ -167,11 +167,11 @@ export function MapView({ connection }: MapViewProps) {
 
     const handleClick = (event: MouseEvent) => {
       if (!camera || !scene || !canvas) return;
-      
+
       if (relocalizeMode) {
         return;
       }
-      
+
       const rect = canvas.getBoundingClientRect();
       const mouse = new THREE.Vector2();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -192,7 +192,7 @@ export function MapView({ connection }: MapViewProps) {
               route_info: route.route_info,
             });
             setSelectedTopoPoint(null);
-            
+
             // 更新 TopoLayer 的选中状态
             const topoLayer = layerManagerRef.current?.getLayer('topology');
             if (topoLayer && 'setSelectedRoute' in topoLayer) {
@@ -212,7 +212,7 @@ export function MapView({ connection }: MapViewProps) {
               theta: point.theta,
             });
             setSelectedTopoRoute(null);
-            
+
             // 更新 TopoLayer 的选中状态
             const topoLayer = layerManagerRef.current?.getLayer('topology');
             if (topoLayer && 'setSelectedPoint' in topoLayer) {
@@ -226,10 +226,10 @@ export function MapView({ connection }: MapViewProps) {
           obj = obj.parent as THREE.Object3D;
         }
       }
-      
+
       setSelectedTopoPoint(null);
       setSelectedTopoRoute(null);
-      
+
       // 清除 TopoLayer 的选中状态
       const topoLayer = layerManagerRef.current?.getLayer('topology');
       if (topoLayer && 'setSelectedRoute' in topoLayer) {
@@ -241,10 +241,10 @@ export function MapView({ connection }: MapViewProps) {
     };
 
     canvas.addEventListener('click', handleClick);
-    
+
     const handleMouseDown = (event: MouseEvent) => {
       if (!relocalizeModeRef.current || !camera || !canvas || !scene) return;
-      
+
       const rect = canvas.getBoundingClientRect();
       const mouse = new THREE.Vector2();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -252,7 +252,7 @@ export function MapView({ connection }: MapViewProps) {
 
       raycaster.setFromCamera(mouse, camera);
       const intersects = raycaster.intersectObjects(scene.children, true);
-      
+
       for (const intersect of intersects) {
         let obj = intersect.object;
         while (obj) {
@@ -280,12 +280,12 @@ export function MapView({ connection }: MapViewProps) {
         }
       }
     };
-    
+
     const handleMouseUp = () => {
       isDraggingRobotRef.current = false;
       isRotatingRobotRef.current = false;
     };
-    
+
     const handleContextMenu = (event: MouseEvent) => {
       if (relocalizeModeRef.current) {
         event.preventDefault();
@@ -294,7 +294,7 @@ export function MapView({ connection }: MapViewProps) {
 
     const handleMouseMove = (event: MouseEvent) => {
       if (!camera || !canvas) return;
-      
+
       const rect = canvas.getBoundingClientRect();
       const mouse = new THREE.Vector2();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -304,7 +304,7 @@ export function MapView({ connection }: MapViewProps) {
       const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
       const intersectPoint = new THREE.Vector3();
       raycaster.ray.intersectPlane(plane, intersectPoint);
-      
+
       if (relocalizeModeRef.current) {
         if (isDraggingRobotRef.current && relocalizeRobotPosRef.current) {
           relocalizeRobotPosRef.current.x = intersectPoint.x;
@@ -319,13 +319,13 @@ export function MapView({ connection }: MapViewProps) {
           }
         }
       }
-      
+
       setMouseWorldPos({ x: intersectPoint.x, y: intersectPoint.y });
     };
-    
+
     const handleRightMouseMove = (event: MouseEvent) => {
       if (!relocalizeModeRef.current || !isRotatingRobotRef.current || !camera || !canvas || !relocalizeRobotPosRef.current) return;
-      
+
       const rect = canvas.getBoundingClientRect();
       const mouse = new THREE.Vector2();
       mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -335,11 +335,11 @@ export function MapView({ connection }: MapViewProps) {
       const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
       const intersectPoint = new THREE.Vector3();
       raycaster.ray.intersectPlane(plane, intersectPoint);
-      
+
       const dx = intersectPoint.x - relocalizeRobotPosRef.current.x;
       const dy = intersectPoint.y - relocalizeRobotPosRef.current.y;
       relocalizeRobotPosRef.current.theta = Math.atan2(dy, dx);
-      
+
       const robotLayer = layerManagerRef.current?.getLayer('robot');
       if (robotLayer && 'setRelocalizePosition' in robotLayer) {
         (robotLayer as any).setRelocalizePosition(relocalizeRobotPosRef.current);
@@ -353,7 +353,7 @@ export function MapView({ connection }: MapViewProps) {
     const handleMouseLeave = () => {
       setMouseWorldPos(null);
     };
-    
+
     canvas.addEventListener('mousedown', handleMouseDown);
     canvas.addEventListener('mouseup', handleMouseUp);
     canvas.addEventListener('contextmenu', handleContextMenu);
@@ -392,12 +392,12 @@ export function MapView({ connection }: MapViewProps) {
       const mapFrame = (robotConfig as any).mapFrame || 'map';
       const tf2js = TF2JS.getInstance();
       const transform = tf2js.findTransform(mapFrame, baseFrame);
-      
+
       if (transform) {
         const robotEuler = new THREE.Euler();
         robotEuler.setFromQuaternion(transform.rotation, 'XYZ');
         const robotTheta = robotEuler.z;
-        
+
         setRobotPos({
           x: transform.translation.x,
           y: transform.translation.y,
@@ -426,19 +426,19 @@ export function MapView({ connection }: MapViewProps) {
                 transform.translation.y,
                 targetZ
               );
-              
+
               if (followDistanceRef.current === null) {
                 const currentDistance = camera.position.distanceTo(controls.target);
                 initialFollowDistanceRef.current = currentDistance;
                 const zoomFactor = (robotConfig as any).followZoomFactor ?? 0.3;
                 followDistanceRef.current = Math.max(currentDistance * zoomFactor, controls.minDistance);
               }
-              
+
               // 获取机器人方向（绕 Z 轴的旋转角度）
               const robotEuler = new THREE.Euler();
               robotEuler.setFromQuaternion(transform.rotation, 'XYZ');
               const robotTheta = robotEuler.z; // 机器人在 XY 平面的旋转角度（绕 Z 轴）
-              
+
               if (viewModeRef.current === '2d') {
                 camera.position.set(
                   controls.target.x,
@@ -452,7 +452,7 @@ export function MapView({ connection }: MapViewProps) {
               } else {
                 // 3D 模式下，调整相机位置使机器人车头方向在屏幕正前方
                 const targetDistance = followDistanceRef.current;
-                
+
                 // 计算相机应该的位置（在机器人后方，高度适中）
                 // 机器人车头方向是 (cos(robotTheta), sin(robotTheta), 0)
                 // 相机应该在机器人后方，所以是 (-cos(robotTheta), -sin(robotTheta), height)
@@ -461,13 +461,13 @@ export function MapView({ connection }: MapViewProps) {
                 const cameraX = -Math.cos(robotTheta) * cameraBackDistance;
                 const cameraY = -Math.sin(robotTheta) * cameraBackDistance;
                 const cameraZ = cameraHeight;
-                
+
                 camera.position.set(
                   controls.target.x + cameraX,
                   controls.target.y + cameraY,
                   controls.target.z + cameraZ
                 );
-                
+
                 // 相机看向机器人
                 camera.lookAt(controls.target);
               }
@@ -477,7 +477,7 @@ export function MapView({ connection }: MapViewProps) {
           followDistanceRef.current = null;
           initialFollowDistanceRef.current = null;
         }
-        
+
         updateRobotPosition();
         controls.update();
       }
@@ -505,6 +505,58 @@ export function MapView({ connection }: MapViewProps) {
       }
     };
   }, [connection]);
+
+  useEffect(() => {
+    if (!connection.isConnected()) {
+      return;
+    }
+
+    const updateRobotPosition = () => {
+      const robotConfig = layerConfigsRef.current.robot;
+      if (!robotConfig) {
+        setRobotPos(null);
+        return;
+      }
+
+      const baseFrame = (robotConfig as any).baseFrame || 'base_link';
+      const mapFrame = (robotConfig as any).mapFrame || 'map';
+      const tf2js = TF2JS.getInstance();
+      const transform = tf2js.findTransform(mapFrame, baseFrame);
+
+      if (transform) {
+        const robotEuler = new THREE.Euler();
+        robotEuler.setFromQuaternion(transform.rotation, 'XYZ');
+        const robotTheta = robotEuler.z;
+
+        setRobotPos({
+          x: transform.translation.x,
+          y: transform.translation.y,
+          theta: robotTheta,
+        });
+      } else {
+        const availableFrames = tf2js.getFrames();
+        if (availableFrames.length > 0) {
+          setRobotPos(null);
+        }
+      }
+    };
+
+    const tf2js = TF2JS.getInstance();
+    const unsubscribe = tf2js.onTransformChange(() => {
+      updateRobotPosition();
+    });
+
+    updateRobotPosition();
+
+    const intervalId = setInterval(() => {
+      updateRobotPosition();
+    }, 100);
+
+    return () => {
+      unsubscribe();
+      clearInterval(intervalId);
+    };
+  }, [connection, layerConfigs]);
 
   useConnectionInit(connection, layerManagerRef, layerConfigs);
 
@@ -590,7 +642,7 @@ export function MapView({ connection }: MapViewProps) {
   const handleFullscreenToggle = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     try {
       if (!document.fullscreenElement) {
         await document.documentElement.requestFullscreen();
@@ -602,7 +654,7 @@ export function MapView({ connection }: MapViewProps) {
       toast.error('全屏操作失败');
     }
   };
-  
+
   const handleRelocalizeToggle = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -613,27 +665,27 @@ export function MapView({ connection }: MapViewProps) {
         setViewMode('2d');
         viewModeRef.current = '2d';
       }
-      
+
       const timeoutId = setTimeout(() => {
         if (!controlsRef.current || !cameraRef.current) return;
-        
+
         const robotConfig = layerConfigsRef.current.robot;
         if (robotConfig) {
           const baseFrame = (robotConfig as any).baseFrame || 'base_link';
           const mapFrame = (robotConfig as any).mapFrame || 'map';
           const tf2js = TF2JS.getInstance();
           const transform = tf2js.findTransform(mapFrame, baseFrame);
-          
+
           if (transform) {
             const controls = controlsRef.current;
             const camera = cameraRef.current;
-            
+
             controls.target.set(
               transform.translation.x,
               transform.translation.y,
               0
             );
-            
+
             const distance = Math.max(10, camera.position.distanceTo(controls.target));
             camera.position.set(
               controls.target.x,
@@ -642,15 +694,15 @@ export function MapView({ connection }: MapViewProps) {
             );
             camera.up.set(0, 0, 1);
             camera.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0, 'XYZ'));
-            
+
             controls.update();
           } else if (relocalizeRobotPosRef.current) {
             const controls = controlsRef.current;
             const camera = cameraRef.current;
             const pos = relocalizeRobotPosRef.current;
-            
+
             controls.target.set(pos.x, pos.y, 0);
-            
+
             const distance = Math.max(10, camera.position.distanceTo(controls.target));
             camera.position.set(
               controls.target.x,
@@ -659,7 +711,7 @@ export function MapView({ connection }: MapViewProps) {
             );
             camera.up.set(0, 0, 1);
             camera.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0, 'XYZ'));
-            
+
             controls.update();
           }
         }
@@ -668,20 +720,20 @@ export function MapView({ connection }: MapViewProps) {
       timeoutRefsRef.current.add(timeoutId);
     }
   };
-  
+
   const handleRelocalizeConfirm = () => {
     if (!relocalizeRobotPosRef.current || !connection.isConnected()) {
       toast.error('无法发布初始化位姿');
       return;
     }
-    
+
     const pos = relocalizeRobotPosRef.current;
     const quaternion = new THREE.Quaternion();
     quaternion.setFromEuler(new THREE.Euler(0, 0, pos.theta, 'XYZ'));
-    
+
     const robotConfig = layerConfigsRef.current.robot;
     const mapFrame = (robotConfig as any)?.mapFrame || 'map';
-    
+
     const message = {
       header: {
         stamp: {
@@ -707,12 +759,12 @@ export function MapView({ connection }: MapViewProps) {
         covariance: new Array(36).fill(0),
       },
     };
-    
+
     connection.publish(initialposeTopicRef.current, 'geometry_msgs/PoseWithCovarianceStamped', message);
     toast.success('初始化位姿已发布');
     setRelocalizeMode(false);
   };
-  
+
   const handleRelocalizeCancel = () => {
     setRelocalizeMode(false);
   };

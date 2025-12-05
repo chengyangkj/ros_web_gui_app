@@ -93,6 +93,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   const [supportGoalCheckers, setSupportGoalCheckers] = useState<string[]>(['general_goal_checker']);
   const [mouseWorldPos, setMouseWorldPos] = useState<{ x: number; y: number } | null>(null);
   const [robotPos, setRobotPos] = useState<{ x: number; y: number; theta: number } | null>(null);
+  const [editingPoint, setEditingPoint] = useState<TopoPoint | null>(null);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -116,7 +117,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     scene.add(directionalLight2);
 
     THREE.Object3D.DEFAULT_UP = new THREE.Vector3(0, 0, 1);
-    
+
     const camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
     camera.position.set(0, 0, 10);
     camera.up.set(0, 0, 1);
@@ -139,7 +140,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
     controls.mouseButtons.MIDDLE = THREE.MOUSE.ROTATE;
     (controls as OrbitControls & { zoomToCursor?: boolean }).zoomToCursor = true;
-    
+
     // 固定为2D模式：禁用旋转，设置相机为俯视图
     controls.enableRotate = false;
     controls.enableZoom = true;
@@ -155,13 +156,13 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
 
     const layerManager = new LayerManager(scene, connection);
     layerManagerRef.current = layerManager;
-    
+
     // 获取 topology layer 引用
     const topoLayer = layerManager.getLayer('topology') as TopoLayer | undefined;
     if (topoLayer) {
       topoLayerRef.current = topoLayer;
     }
-    
+
     // 获取 occupancy_grid layer 引用
     const occupancyGridLayer = layerManager.getLayer('occupancy_grid');
     if (occupancyGridLayer instanceof OccupancyGridLayer) {
@@ -182,19 +183,22 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     const updateRobotPosition = () => {
       const tf2js = TF2JS.getInstance();
       const transform = tf2js.findTransform('map', 'base_link');
-      
+
       if (transform) {
         const robotEuler = new THREE.Euler();
         robotEuler.setFromQuaternion(transform.rotation, 'XYZ');
         const robotTheta = robotEuler.z;
-        
+
         setRobotPos({
           x: transform.translation.x,
           y: transform.translation.y,
           theta: robotTheta,
         });
       } else {
-        setRobotPos(null);
+        const availableFrames = tf2js.getFrames();
+        if (availableFrames.length > 0) {
+          setRobotPos(null);
+        }
       }
     };
 
@@ -244,22 +248,22 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         await connection.initializeMessageReaders();
         TF2JS.getInstance().initialize(connection);
         layerManagerRef.current?.setLayerConfigs(DEFAULT_EDITOR_CONFIGS);
-        
+
         const mapManager = mapManagerRef.current;
         mapManager.initialize(connection);
-        
+
         handleMapUpdate = () => {
           updateTopoMap();
         };
         mapManager.addTopologyListener(handleMapUpdate);
-        
+
         timeoutId = setTimeout(() => {
           const topoLayer = layerManagerRef.current?.getLayer('topology') as TopoLayer | undefined;
           if (topoLayer) {
             topoLayerRef.current = topoLayer;
             updateTopoMap();
           }
-          
+
           const occupancyGridLayer = layerManagerRef.current?.getLayer('occupancy_grid');
           if (occupancyGridLayer instanceof OccupancyGridLayer) {
             occupancyGridLayerRef.current = occupancyGridLayer;
@@ -283,13 +287,56 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         mapManagerRef.current.removeTopologyListener(handleMapUpdate);
       }
       mapManagerRef.current.disconnect();
-      TF2JS.getInstance().disconnect();
+    };
+  }, [connection]);
+
+  useEffect(() => {
+    if (!connection.isConnected()) {
+      return;
+    }
+
+    const updateRobotPosition = () => {
+      const tf2js = TF2JS.getInstance();
+      const transform = tf2js.findTransform('map', 'base_link');
+
+      if (transform) {
+        const robotEuler = new THREE.Euler();
+        robotEuler.setFromQuaternion(transform.rotation, 'XYZ');
+        const robotTheta = robotEuler.z;
+
+        setRobotPos({
+          x: transform.translation.x,
+          y: transform.translation.y,
+          theta: robotTheta,
+        });
+      } else {
+        const availableFrames = tf2js.getFrames();
+        if (availableFrames.length > 0) {
+          setRobotPos(null);
+        }
+      }
+    };
+
+    const tf2js = TF2JS.getInstance();
+    const unsubscribe = tf2js.onTransformChange(() => {
+      updateRobotPosition();
+    });
+
+    updateRobotPosition();
+
+    const intervalId = setInterval(() => {
+      updateRobotPosition();
+    }, 100);
+
+    return () => {
+      unsubscribe();
+      clearInterval(intervalId);
     };
   }, [connection]);
 
   const getWorldPosition = (event: MouseEvent): THREE.Vector3 | null => {
     if (!cameraRef.current || !canvasRef.current) return null;
-    
+
     const rect = canvasRef.current.getBoundingClientRect();
     const mouse = new THREE.Vector2();
     mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
@@ -302,7 +349,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
     const intersectPoint = new THREE.Vector3();
     raycaster.ray.intersectPlane(plane, intersectPoint);
-    
+
     return intersectPoint;
   };
 
@@ -321,7 +368,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       // 直线绘制工具：点击空白区域设置起始点和结束点
       const worldPos = getWorldPosition(event);
       if (!worldPos || !occupancyGridLayerRef.current) return;
-      
+
       if (!lineStartPoint) {
         setLineStartPoint(worldPos);
         createPreviewLine(worldPos.x, worldPos.y, worldPos.x, worldPos.y);
@@ -336,16 +383,16 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
           100,
           brushSize
         );
-        
+
         if (changes.length > 0) {
           const command = new ModifyGridCommand(
             occupancyGridLayerRef.current,
             changes,
-            () => {}
+            () => { }
           );
           commandManagerRef.current.executeCommand(command);
         }
-        
+
         clearPreviewLine();
         setLineStartPoint(null);
         toast.success('已绘制直线');
@@ -408,7 +455,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
           obj = obj.parent as THREE.Object3D;
         }
       }
-      
+
       // 点击空白区域，取消选中（仅在连线工具模式下）
       setSelectedPoint(null);
       setSelectedRoute(null);
@@ -468,7 +515,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       // 添加点位工具：点击空白区域添加新点位
       const worldPos = getWorldPosition(event);
       if (!worldPos) return;
-      
+
       // 生成唯一的点位名称
       const mapManager = mapManagerRef.current;
       const existingPoints = mapManager.getTopologyPoints();
@@ -478,7 +525,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         pointIndex++;
         pointName = `NAV_POINT_${pointIndex}`;
       }
-      
+
       // 添加新点位（默认没有连线）
       const newPoint: TopoPoint = {
         name: pointName,
@@ -508,15 +555,15 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         lastDrawPosRef.current = worldPos;
         currentGridChangesRef.current.clear();
         initialGridValuesRef.current.clear();
-        
+
         const value = currentTool === 'brush' ? 100 : 0;
         const changes = occupancyGridLayerRef.current.modifyCells([{ x: worldPos.x, y: worldPos.y }], value, brushSize);
-        
+
         for (const change of changes) {
           initialGridValuesRef.current.set(change.index, change.oldValue);
           currentGridChangesRef.current.set(change.index, { oldValue: change.oldValue, newValue: change.newValue });
         }
-        
+
         // 禁用 controls
         if (controlsRef.current) {
           controlsRef.current.enablePan = false;
@@ -524,7 +571,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       }
       return;
     }
-    
+
     if (currentTool === 'move') {
       if (event.button === 0) {
         // 左键：移动点位
@@ -550,12 +597,12 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
                 setIsDragging(true);
                 setDragStartPos(new THREE.Vector2(event.clientX, event.clientY));
                 dragStartPointRef.current = { ...pointData };
-                
+
                 // 禁用 controls
                 if (controlsRef.current) {
                   controlsRef.current.enablePan = false;
                 }
-                
+
                 // 找到对应的 group
                 sceneRef.current!.traverse((child) => {
                   if (child instanceof THREE.Group && child.name === point.name) {
@@ -592,12 +639,12 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
                 setIsRotating(true);
                 setDragStartPos(new THREE.Vector2(event.clientX, event.clientY));
                 dragStartPointRef.current = { ...pointData };
-                
+
                 // 禁用 controls
                 if (controlsRef.current) {
                   controlsRef.current.enablePan = false;
                 }
-                
+
                 // 找到对应的 group
                 sceneRef.current!.traverse((child) => {
                   if (child instanceof THREE.Group && child.name === point.name) {
@@ -632,7 +679,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
 
   const getBrushIndicatorSize = (): number => {
     if (!cameraRef.current || !canvasRef.current) return 0;
-    
+
     const camera = cameraRef.current;
     const canvas = canvasRef.current;
     const distance = camera.position.z;
@@ -640,18 +687,18 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     const canvasHeight = canvas.clientHeight;
     const worldHeight = 2 * Math.tan(fov / 2) * distance;
     const pixelsPerMeter = canvasHeight / worldHeight;
-    
+
     return brushSize * pixelsPerMeter;
   };
 
   const handleCanvasMouseMove = (event: MouseEvent) => {
     updateBrushIndicatorFromNative(event);
-    
+
     const worldPos = getWorldPosition(event);
     if (worldPos) {
       setMouseWorldPos({ x: worldPos.x, y: worldPos.y });
     }
-    
+
     if (isDrawing && (currentTool === 'brush' || currentTool === 'eraser') && occupancyGridLayerRef.current) {
       event.preventDefault();
       event.stopPropagation();
@@ -659,13 +706,13 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       if (worldPos) {
         const value = currentTool === 'brush' ? 100 : 0;
         const positions: Array<{ x: number; y: number }> = [];
-        
+
         if (lastDrawPosRef.current) {
           const dx = worldPos.x - lastDrawPosRef.current.x;
           const dy = worldPos.y - lastDrawPosRef.current.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
           const steps = Math.max(1, Math.ceil(dist / (brushSize / 4)));
-          
+
           for (let i = 0; i <= steps; i++) {
             const t = i / steps;
             positions.push({
@@ -676,9 +723,9 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         } else {
           positions.push({ x: worldPos.x, y: worldPos.y });
         }
-        
+
         const changes = occupancyGridLayerRef.current.modifyCells(positions, value, brushSize, initialGridValuesRef.current);
-        
+
         for (const change of changes) {
           if (!currentGridChangesRef.current.has(change.index)) {
             if (!initialGridValuesRef.current.has(change.index)) {
@@ -690,17 +737,17 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
             existing.newValue = change.newValue;
           }
         }
-        
+
         lastDrawPosRef.current = worldPos;
       }
       return;
     }
-    
+
     if (isRotating && selectedPoint && dragStartPos && selectedPointRef.current) {
       // 右键拖动：旋转点位方向
       event.preventDefault();
       event.stopPropagation();
-      
+
       const worldPos = getWorldPosition(event);
       if (worldPos && selectedPointRef.current) {
         const dx = worldPos.x - selectedPoint.x;
@@ -717,7 +764,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     } else if (isDragging && selectedPoint && dragStartPos && selectedPointRef.current) {
       event.preventDefault();
       event.stopPropagation();
-      
+
       // 左键拖动：移动位置
       const worldPos = getWorldPosition(event);
       if (worldPos) {
@@ -747,11 +794,11 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
           oldValue: values.oldValue,
           newValue: values.newValue,
         }));
-        
+
         const command = new ModifyGridCommand(
           occupancyGridLayerRef.current,
           changes,
-          () => {}
+          () => { }
         );
         commandManagerRef.current.executeCommand(command);
         currentGridChangesRef.current.clear();
@@ -759,7 +806,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       setIsDrawing(false);
       lastDrawPosRef.current = null;
     }
-    
+
     if ((isDragging || isRotating) && selectedPoint && dragStartPointRef.current) {
       const currentPoint = mapManagerRef.current.getTopologyPoint(selectedPoint.name);
       if (currentPoint && dragStartPointRef.current.name === currentPoint.name) {
@@ -768,12 +815,12 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       }
       dragStartPointRef.current = null;
     }
-    
+
     setIsDragging(false);
     setIsRotating(false);
     setDragStartPos(null);
     selectedPointRef.current = null;
-    
+
     // 恢复 controls
     if (controlsRef.current) {
       controlsRef.current.enablePan = true;
@@ -782,9 +829,9 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
 
   const createPreviewLine = (startX: number, startY: number, endX: number, endY: number) => {
     if (!sceneRef.current) return;
-    
+
     clearPreviewLine();
-    
+
     const geometry = new THREE.BufferGeometry();
     const pointHeight = 0.2 * 2;
     const lineZ = 0.002 + pointHeight / 2;
@@ -797,14 +844,14 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       lineZ,
     ]);
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    
+
     const material = new THREE.LineBasicMaterial({
       color: currentTool === 'drawLine' ? 0x2196f3 : 0x00ff00,
       linewidth: 2,
       transparent: true,
       opacity: 0.6,
     });
-    
+
     const line = new THREE.Line(geometry, material);
     line.name = 'previewLine';
     previewLineRef.current = line;
@@ -813,54 +860,54 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
 
   const updatePreviewLine = (event: MouseEvent) => {
     if (!sceneRef.current) return;
-    
+
     if (currentTool === 'drawLine' && lineStartPoint) {
       const worldPos = getWorldPosition(event);
       if (!worldPos) return;
-      
+
       if (!previewLineRef.current) {
         createPreviewLine(lineStartPoint.x, lineStartPoint.y, worldPos.x, worldPos.y);
         return;
       }
-      
+
       const geometry = previewLineRef.current.geometry as THREE.BufferGeometry;
       const positions = geometry.attributes.position.array as Float32Array;
       const pointHeight = 0.2 * 2;
       const lineZ = 0.002 + pointHeight / 2;
-      
+
       positions[0] = lineStartPoint.x;
       positions[1] = lineStartPoint.y;
       positions[2] = lineZ;
       positions[3] = worldPos.x;
       positions[4] = worldPos.y;
       positions[5] = lineZ;
-      
+
       geometry.attributes.position.needsUpdate = true;
     } else if (currentTool === 'addRoute' && routeStartPoint) {
       const mapManager = mapManagerRef.current;
       const startPoint = mapManager.getTopologyPoint(routeStartPoint);
       if (!startPoint) return;
-      
+
       const worldPos = getWorldPosition(event);
       if (!worldPos) return;
-      
+
       if (!previewLineRef.current) {
         createPreviewLine(startPoint.x, startPoint.y, worldPos.x, worldPos.y);
         return;
       }
-      
+
       const geometry = previewLineRef.current.geometry as THREE.BufferGeometry;
       const positions = geometry.attributes.position.array as Float32Array;
       const pointHeight = 0.2 * 2;
       const lineZ = 0.002 + pointHeight / 2;
-      
+
       positions[0] = startPoint.x;
       positions[1] = startPoint.y;
       positions[2] = lineZ;
       positions[3] = worldPos.x;
       positions[4] = worldPos.y;
       positions[5] = lineZ;
-      
+
       geometry.attributes.position.needsUpdate = true;
     }
   };
@@ -877,14 +924,14 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   const updateTopoMap = () => {
     const mapManager = mapManagerRef.current;
     const topologyMap = mapManager.getTopologyMap();
-    
+
     const mapProperty = mapManager.getMapProperty();
     const defaultControllers = ['FollowPath'];
     const defaultGoalCheckers = ['general_goal_checker'];
-    
+
     const allControllers = new Set<string>(defaultControllers);
     const allGoalCheckers = new Set<string>(defaultGoalCheckers);
-    
+
     if (mapProperty) {
       if (mapProperty.support_controllers) {
         mapProperty.support_controllers.forEach(c => allControllers.add(c));
@@ -893,7 +940,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         mapProperty.support_goal_checkers.forEach(g => allGoalCheckers.add(g));
       }
     }
-    
+
     const routes = mapManager.getTopologyRoutes();
     routes.forEach(route => {
       if (route.route_info.controller) {
@@ -903,7 +950,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         allGoalCheckers.add(route.route_info.goal_checker);
       }
     });
-    
+
     if (selectedRoute) {
       if (selectedRoute.route_info.controller) {
         allControllers.add(selectedRoute.route_info.controller);
@@ -912,10 +959,10 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         allGoalCheckers.add(selectedRoute.route_info.goal_checker);
       }
     }
-    
+
     setSupportControllers(Array.from(allControllers).sort());
     setSupportGoalCheckers(Array.from(allGoalCheckers).sort());
-    
+
     if (topoLayerRef.current) {
       topoLayerRef.current.update(topologyMap);
       // 更新后恢复选中状态
@@ -935,13 +982,13 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
 
   const handleSave = () => {
     const mapManager = mapManagerRef.current;
-    
+
     const defaultControllers = ['FollowPath'];
     const defaultGoalCheckers = ['general_goal_checker'];
-    
+
     const allControllers = new Set<string>(defaultControllers);
     const allGoalCheckers = new Set<string>(defaultGoalCheckers);
-    
+
     const existingMapProperty = mapManager.getMapProperty();
     if (existingMapProperty) {
       if (existingMapProperty.support_controllers) {
@@ -951,7 +998,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         existingMapProperty.support_goal_checkers.forEach(g => allGoalCheckers.add(g));
       }
     }
-    
+
     const routes = mapManager.getTopologyRoutes();
     routes.forEach(route => {
       if (route.route_info.controller) {
@@ -961,14 +1008,14 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         allGoalCheckers.add(route.route_info.goal_checker);
       }
     });
-    
+
     const mapProperty = {
       support_controllers: Array.from(allControllers).sort(),
       support_goal_checkers: Array.from(allGoalCheckers).sort(),
     };
-    
+
     mapManager.updateMapProperty(mapProperty);
-    
+
     try {
       mapManager.saveAndPublishTopology(connection);
       toast.success('拓扑地图已保存并发布');
@@ -977,7 +1024,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       mapManager.saveTopology();
       toast.warning('保存成功，但发布失败');
     }
-    
+
     try {
       mapManagerRef.current.publishOccupancyGrid(connection);
       toast.success('栅格地图已发布到 /map/update');
@@ -994,6 +1041,14 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   useEffect(() => {
     selectedRouteStateRef.current = selectedRoute;
   }, [selectedRoute]);
+
+  useEffect(() => {
+    if (selectedPoint) {
+      setEditingPoint({ ...selectedPoint });
+    } else {
+      setEditingPoint(null);
+    }
+  }, [selectedPoint]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1044,7 +1099,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
 
   const handlePointPropertyChange = (field: keyof TopoPoint, value: string | number) => {
     if (!selectedPoint) return;
-    
+
     const oldPoint = { ...selectedPoint };
     const updatedPoint: TopoPoint = {
       ...selectedPoint,
@@ -1061,7 +1116,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
 
   const handleRoutePropertyChange = (field: keyof RouteInfo, value: string | number) => {
     if (!selectedRoute) return;
-    
+
     if (field === 'controller' && typeof value === 'string') {
       if (!supportControllers.includes(value)) {
         setSupportControllers([...supportControllers, value]);
@@ -1071,7 +1126,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         setSupportGoalCheckers([...supportGoalCheckers, value]);
       }
     }
-    
+
     const oldRoute = { ...selectedRoute };
     const updatedRoute: Route = {
       ...selectedRoute,
@@ -1090,16 +1145,16 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     const mapFrame = 'map';
     const baseFrame = 'base_link';
     const transform = tf2js.findTransform(mapFrame, baseFrame);
-    
+
     if (!transform) {
       toast.error('无法获取机器人位置，请检查TF连接');
       return;
     }
-    
+
     const robotEuler = new THREE.Euler();
     robotEuler.setFromQuaternion(transform.rotation, 'XYZ');
     const robotTheta = robotEuler.z;
-    
+
     const mapManager = mapManagerRef.current;
     const existingPoints = mapManager.getTopologyPoints();
     let pointIndex = existingPoints.length;
@@ -1108,7 +1163,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       pointIndex++;
       pointName = `NAV_POINT_${pointIndex}`;
     }
-    
+
     const newPoint: TopoPoint = {
       name: pointName,
       x: transform.translation.x,
@@ -1116,7 +1171,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       theta: robotTheta,
       type: 0,
     };
-    
+
     const command = new AddPointCommand(mapManager, newPoint, updateTopoMap);
     commandManagerRef.current.executeCommand(command);
     setSelectedPoint(newPoint);
@@ -1141,12 +1196,12 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     try {
       const occupancyGrid = occupancyGridLayerRef.current?.getMapMessage();
       const topologyMap = mapManagerRef.current.getTopologyMap();
-      
+
       if (!occupancyGrid && (!topologyMap.points || topologyMap.points.length === 0)) {
         toast.error('没有可导出的地图数据');
         return;
       }
-      
+
       await exportMap(
         occupancyGrid || null,
         (topologyMap.points && topologyMap.points.length > 0) ? topologyMap : null,
@@ -1186,7 +1241,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
           dataLength: occupancyGrid.data?.length
         });
         mapManagerRef.current.updateOccupancyGrid(occupancyGrid, true);
-        
+
         const timeoutId = setTimeout(() => {
           const layer = occupancyGridLayerRef.current;
           if (layer && 'renderMap' in layer) {
@@ -1202,7 +1257,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
           timeoutRefsRef.current.delete(timeoutId);
         }, 100);
         timeoutRefsRef.current.add(timeoutId);
-        
+
         toast.success('栅格地图导入成功');
       }
 
@@ -1224,6 +1279,51 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         fileInputRef.current.value = '';
       }
     }
+  };
+
+  const handleEditingPointChange = (field: keyof TopoPoint, value: string | number) => {
+    if (!editingPoint) return;
+    setEditingPoint({
+      ...editingPoint,
+      [field]: value,
+    });
+  };
+
+  const handlePointConfirm = () => {
+    if (!editingPoint || !selectedPoint) return;
+
+    const oldPoint = { ...selectedPoint };
+    const command = new ModifyPointCommand(mapManagerRef.current, oldPoint, editingPoint, updateTopoMap);
+    commandManagerRef.current.executeCommand(command);
+    setSelectedPoint(null);
+    setEditingPoint(null);
+    const topoLayer = layerManagerRef.current?.getLayer('topology');
+    if (topoLayer instanceof TopoLayer) {
+      topoLayer.setSelectedPoint(null);
+    }
+  };
+
+  const handlePointCancel = () => {
+    setSelectedPoint(null);
+    setEditingPoint(null);
+    const topoLayer = layerManagerRef.current?.getLayer('topology');
+    if (topoLayer instanceof TopoLayer) {
+      topoLayer.setSelectedPoint(null);
+    }
+  };
+
+  const handleFillRobotPosition = () => {
+    if (!editingPoint || !robotPos) {
+      toast.error('无法获取机器人位置，请检查TF连接');
+      return;
+    }
+
+    setEditingPoint({
+      ...editingPoint,
+      x: robotPos.x,
+      y: robotPos.y,
+      theta: robotPos.theta,
+    });
   };
 
   return (
@@ -1297,92 +1397,92 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       <div className="EditorContent">
         <div className="Toolbar">
           <button
-            className={`ToolButton ${currentTool === 'move' ? 'active' : ''}`}
-            onClick={() => {
-              setCurrentTool('move');
-              setRouteStartPoint(null);
-              setLineStartPoint(null);
-              clearPreviewLine();
-              setMousePosition(null);
-            }}
-            type="button"
-            title="移动工具"
-          >
-            🖱️ 移动
-          </button>
-          <button
-            className={`ToolButton ${currentTool === 'addPoint' ? 'active' : ''}`}
-            onClick={() => {
-              setCurrentTool('addPoint');
-              setRouteStartPoint(null);
-              setLineStartPoint(null);
-              clearPreviewLine();
-              setMousePosition(null);
-            }}
-            type="button"
-            title="添加拓扑点位"
-          >
-            ➕ 添加点位
-          </button>
-          <button
-            className={`ToolButton ${currentTool === 'addRoute' ? 'active' : ''}`}
-            onClick={() => {
-              setCurrentTool('addRoute');
-              setRouteStartPoint(null);
-              setLineStartPoint(null);
-              clearPreviewLine();
-              setMousePosition(null);
-            }}
-            type="button"
-            title="拓扑连线"
-          >
-            🔗 拓扑路径
-          </button>
-          <button
-            className={`ToolButton ${currentTool === 'brush' ? 'active' : ''}`}
-            onClick={() => {
-              setCurrentTool('brush');
-              setRouteStartPoint(null);
-              setLineStartPoint(null);
-              clearPreviewLine();
-              setMousePosition(null);
-            }}
-            type="button"
-            title="绘制障碍物"
-          >
-            🖌️ 障碍物绘制
-          </button>
-          <button
-            className={`ToolButton ${currentTool === 'eraser' ? 'active' : ''}`}
-            onClick={() => {
-              setCurrentTool('eraser');
-              setRouteStartPoint(null);
-              setLineStartPoint(null);
-              clearPreviewLine();
-              setMousePosition(null);
-            }}
-            type="button"
-            title="擦除障碍物"
-          >
-            🧹 橡皮擦
-          </button>
-          <button
-            className={`ToolButton ${currentTool === 'drawLine' ? 'active' : ''}`}
-            onClick={() => {
-              setCurrentTool('drawLine');
-              setRouteStartPoint(null);
-              setLineStartPoint(null);
-              clearPreviewLine();
-              setMousePosition(null);
-            }}
-            type="button"
-            title="直线绘制"
-          >
-            📏 直线绘制
-          </button>
+              className={`ToolButton ${currentTool === 'move' ? 'active' : ''}`}
+              onClick={() => {
+                setCurrentTool('move');
+                setRouteStartPoint(null);
+                setLineStartPoint(null);
+                clearPreviewLine();
+                setMousePosition(null);
+              }}
+              type="button"
+              title="移动工具"
+            >
+              🖱️ 移动
+            </button>
+            <button
+              className={`ToolButton ${currentTool === 'addPoint' ? 'active' : ''}`}
+              onClick={() => {
+                setCurrentTool('addPoint');
+                setRouteStartPoint(null);
+                setLineStartPoint(null);
+                clearPreviewLine();
+                setMousePosition(null);
+              }}
+              type="button"
+              title="添加拓扑点位"
+            >
+              ➕ 添加点位
+            </button>
+            <button
+              className={`ToolButton ${currentTool === 'addRoute' ? 'active' : ''}`}
+              onClick={() => {
+                setCurrentTool('addRoute');
+                setRouteStartPoint(null);
+                setLineStartPoint(null);
+                clearPreviewLine();
+                setMousePosition(null);
+              }}
+              type="button"
+              title="拓扑连线"
+            >
+              🔗 拓扑路径
+            </button>
+            <button
+              className={`ToolButton ${currentTool === 'brush' ? 'active' : ''}`}
+              onClick={() => {
+                setCurrentTool('brush');
+                setRouteStartPoint(null);
+                setLineStartPoint(null);
+                clearPreviewLine();
+                setMousePosition(null);
+              }}
+              type="button"
+              title="绘制障碍物"
+            >
+              🖌️ 障碍物绘制
+            </button>
+            <button
+              className={`ToolButton ${currentTool === 'eraser' ? 'active' : ''}`}
+              onClick={() => {
+                setCurrentTool('eraser');
+                setRouteStartPoint(null);
+                setLineStartPoint(null);
+                clearPreviewLine();
+                setMousePosition(null);
+              }}
+              type="button"
+              title="擦除障碍物"
+            >
+              🧹 橡皮擦
+            </button>
+            <button
+              className={`ToolButton ${currentTool === 'drawLine' ? 'active' : ''}`}
+              onClick={() => {
+                setCurrentTool('drawLine');
+                setRouteStartPoint(null);
+                setLineStartPoint(null);
+                clearPreviewLine();
+                setMousePosition(null);
+              }}
+              type="button"
+              title="直线绘制"
+            >
+              📏 直线绘制
+            </button>
         </div>
         {(currentTool === 'brush' || currentTool === 'eraser' || currentTool === 'drawLine') && (
-          <div style={{ padding: '10px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          <div className="ToolbarOptions" style={{ padding: '10px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: 'white' }}>
               <span style={{ color: 'white' }}>画笔大小:</span>
               <input
@@ -1399,7 +1499,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
           </div>
         )}
         {currentTool === 'addPoint' && (
-          <div style={{ padding: '10px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          <div className="ToolbarOptions">
             <button
               onClick={handleAddRobotPosition}
               type="button"
@@ -1421,13 +1521,12 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
           </div>
         )}
         <div className="EditorCanvas">
-          <canvas 
-            ref={canvasRef} 
-            className={`EditorMapCanvas ${
-              currentTool === 'brush' ? 'cursor-brush' : 
-              currentTool === 'eraser' ? 'cursor-eraser' : 
-              ''
-            }`}
+          <canvas
+            ref={canvasRef}
+            className={`EditorMapCanvas ${currentTool === 'brush' ? 'cursor-brush' :
+                currentTool === 'eraser' ? 'cursor-eraser' :
+                  ''
+              }`}
             onMouseMove={updateBrushIndicator}
             onMouseLeave={() => setMousePosition(null)}
             onContextMenu={(e) => {
@@ -1451,142 +1550,197 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
             />
           )}
         </div>
-        <div className="PropertyPanel">
-          {selectedPoint && (
-            <div className="PropertySection">
-              <h3>点位属性</h3>
-              <div className="PropertyRow">
-                <label>名称:</label>
-                <input
-                  type="text"
-                  value={selectedPoint.name}
-                  onChange={(e) => handlePointPropertyChange('name', e.target.value)}
-                />
-              </div>
-              <div className="PropertyRow">
-                <label>X:</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={selectedPoint.x.toFixed(3)}
-                  onChange={(e) => handlePointPropertyChange('x', parseFloat(e.target.value) || 0)}
-                />
-              </div>
-              <div className="PropertyRow">
-                <label>Y:</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={selectedPoint.y.toFixed(3)}
-                  onChange={(e) => handlePointPropertyChange('y', parseFloat(e.target.value) || 0)}
-                />
-              </div>
-              <div className="PropertyRow">
-                <label>Theta:</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={selectedPoint.theta.toFixed(3)}
-                  onChange={(e) => handlePointPropertyChange('theta', parseFloat(e.target.value) || 0)}
-                />
-              </div>
-              <button
-                className="DeleteButton"
-                onClick={() => {
-                  const command = new DeletePointCommand(mapManagerRef.current, selectedPoint, updateTopoMap);
-                  commandManagerRef.current.executeCommand(command);
-                  setSelectedPoint(null);
-                  const topoLayer = layerManagerRef.current?.getLayer('topology');
-                  if (topoLayer instanceof TopoLayer) {
-                    topoLayer.setSelectedPoint(null);
-                  }
-                  toast.success(`已删除点位: ${selectedPoint.name}`);
-                }}
-                type="button"
-              >
-                删除点位
-              </button>
-            </div>
-          )}
-          {selectedRoute && (
-            <div className="PropertySection">
-              <h3>路线属性</h3>
-              <div className="PropertyRow">
-                <label>起点:</label>
-                <span>{selectedRoute.from_point}</span>
-              </div>
-              <div className="PropertyRow">
-                <label>终点:</label>
-                <span>{selectedRoute.to_point}</span>
-              </div>
-              <div className="PropertyRow">
-                <label>控制器:</label>
-                <select
-                  value={selectedRoute.route_info.controller}
-                  onChange={(e) => handleRoutePropertyChange('controller', e.target.value)}
+        {((selectedPoint && editingPoint) || selectedRoute) && (
+          <div className="PropertyPanel">
+            {selectedPoint && editingPoint && (
+              <div className="PropertySection">
+                <h3>点位属性</h3>
+                <div className="PropertyRow">
+                  <label>名称:</label>
+                  <input
+                    type="text"
+                    value={editingPoint.name}
+                    onChange={(e) => handleEditingPointChange('name', e.target.value)}
+                  />
+                </div>
+                <div className="PropertyRow">
+                  <label>X:</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editingPoint.x}
+                    onChange={(e) => handleEditingPointChange('x', parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+                <div className="PropertyRow">
+                  <label>Y:</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editingPoint.y}
+                    onChange={(e) => handleEditingPointChange('y', parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+                <div className="PropertyRow">
+                  <label>Theta:</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editingPoint.theta}
+                    onChange={(e) => handleEditingPointChange('theta', parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+                <button
+                  onClick={handleFillRobotPosition}
+                  type="button"
                   style={{
                     width: '100%',
-                    padding: '4px 8px',
-                    backgroundColor: '#1a1a1a',
+                    padding: '8px 16px',
+                    marginBottom: '10px',
+                    backgroundColor: '#2196F3',
                     color: 'white',
-                    border: '1px solid #444',
+                    border: 'none',
                     borderRadius: '4px',
+                    cursor: 'pointer',
                     fontSize: '14px',
                   }}
+                  title="将机器人当前位置填入坐标"
                 >
-                  {supportControllers.map(controller => (
-                    <option key={controller} value={controller}>{controller}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="PropertyRow">
-                <label>目标检查器:</label>
-                <select
-                  value={selectedRoute.route_info.goal_checker}
-                  onChange={(e) => handleRoutePropertyChange('goal_checker', e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '4px 8px',
-                    backgroundColor: '#1a1a1a',
-                    color: 'white',
-                    border: '1px solid #444',
-                    borderRadius: '4px',
-                    fontSize: '14px',
+                  🤖 填入机器人位置
+                </button>
+                <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                  <button
+                    onClick={handlePointConfirm}
+                    type="button"
+                    style={{
+                      flex: 1,
+                      padding: '8px 16px',
+                      backgroundColor: '#4CAF50',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                    }}
+                  >
+                    确定
+                  </button>
+                  <button
+                    onClick={handlePointCancel}
+                    type="button"
+                    style={{
+                      flex: 1,
+                      padding: '8px 16px',
+                      backgroundColor: '#555',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                    }}
+                  >
+                    取消
+                  </button>
+                </div>
+                <button
+                  className="DeleteButton"
+                  onClick={() => {
+                    const command = new DeletePointCommand(mapManagerRef.current, selectedPoint, updateTopoMap);
+                    commandManagerRef.current.executeCommand(command);
+                    setSelectedPoint(null);
+                    setEditingPoint(null);
+                    const topoLayer = layerManagerRef.current?.getLayer('topology');
+                    if (topoLayer instanceof TopoLayer) {
+                      topoLayer.setSelectedPoint(null);
+                    }
+                    toast.success(`已删除点位: ${selectedPoint.name}`);
                   }}
+                  type="button"
                 >
-                  {supportGoalCheckers.map(goalChecker => (
-                    <option key={goalChecker} value={goalChecker}>{goalChecker}</option>
-                  ))}
-                </select>
+                  删除点位
+                </button>
               </div>
-              <div className="PropertyRow">
-                <label>速度限制:</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={selectedRoute.route_info.speed_limit}
-                  onChange={(e) => handleRoutePropertyChange('speed_limit', parseFloat(e.target.value) || 0)}
-                />
+            )}
+            {selectedRoute && (
+              <div className="PropertySection">
+                <h3>路线属性</h3>
+                <div className="PropertyRow">
+                  <label>起点:</label>
+                  <span>{selectedRoute.from_point}</span>
+                </div>
+                <div className="PropertyRow">
+                  <label>终点:</label>
+                  <span>{selectedRoute.to_point}</span>
+                </div>
+                <div className="PropertyRow">
+                  <label>控制器:</label>
+                  <select
+                    value={selectedRoute.route_info.controller}
+                    onChange={(e) => handleRoutePropertyChange('controller', e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '4px 8px',
+                      backgroundColor: '#1a1a1a',
+                      color: 'white',
+                      border: '1px solid #444',
+                      borderRadius: '4px',
+                      fontSize: '14px',
+                    }}
+                  >
+                    {supportControllers.map(controller => (
+                      <option key={controller} value={controller}>{controller}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="PropertyRow">
+                  <label>目标检查器:</label>
+                  <select
+                    value={selectedRoute.route_info.goal_checker}
+                    onChange={(e) => handleRoutePropertyChange('goal_checker', e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '4px 8px',
+                      backgroundColor: '#1a1a1a',
+                      color: 'white',
+                      border: '1px solid #444',
+                      borderRadius: '4px',
+                      fontSize: '14px',
+                    }}
+                  >
+                    {supportGoalCheckers.map(goalChecker => (
+                      <option key={goalChecker} value={goalChecker}>{goalChecker}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="PropertyRow">
+                  <label>速度限制:</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={selectedRoute.route_info.speed_limit}
+                    onChange={(e) => handleRoutePropertyChange('speed_limit', parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+                <button
+                  className="DeleteButton"
+                  onClick={() => {
+                    const command = new DeleteRouteCommand(mapManagerRef.current, selectedRoute, updateTopoMap);
+                    commandManagerRef.current.executeCommand(command);
+                    setSelectedRoute(null);
+                    const topoLayer = layerManagerRef.current?.getLayer('topology');
+                    if (topoLayer instanceof TopoLayer) {
+                      topoLayer.setSelectedRoute(null);
+                    }
+                    toast.success(`已删除路线: ${selectedRoute.from_point} -> ${selectedRoute.to_point}`);
+                  }}
+                  type="button"
+                >
+                  删除路线
+                </button>
               </div>
-              <button
-                className="DeleteButton"
-                onClick={() => {
-                  const command = new DeleteRouteCommand(mapManagerRef.current, selectedRoute, updateTopoMap);
-                  commandManagerRef.current.executeCommand(command);
-                  setSelectedRoute(null);
-                  const topoLayer = layerManagerRef.current?.getLayer('topology');
-                  if (topoLayer instanceof TopoLayer) {
-                    topoLayer.setSelectedRoute(null);
-                  }
-                  toast.success(`已删除路线: ${selectedRoute.from_point} -> ${selectedRoute.to_point}`);
-                }}
-                type="button"
-              >
-                删除路线
-              </button>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
       {showExportDialog && (
         <div style={{

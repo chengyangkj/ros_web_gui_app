@@ -39,6 +39,22 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  overflow: hidden;
+}
+
+.ToolbarToggle:hover {
+  background-color: rgba(40, 40, 40, 0.95);
+  color: white;
+}
+
+.ToolbarOptions {
+  width: 200px;
+  background-color: rgba(30, 30, 30, 0.95);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  transition: width 0.3s ease;
+  overflow: hidden;
 }
 
 .ToolButton {
