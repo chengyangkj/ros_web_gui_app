@@ -86,6 +86,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
   const selectedPointStateRef = useRef<TopoPoint | null>(null);
   const selectedRouteStateRef = useRef<Route | null>(null);
   const currentGridChangesRef = useRef<Map<number, { oldValue: number; newValue: number }>>(new Map());
+  const timeoutRefsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   const initialGridValuesRef = useRef<Map<number, number>>(new Map());
   const dragStartPointRef = useRef<TopoPoint | null>(null);
   const [supportControllers, setSupportControllers] = useState<string[]>(['FollowPath']);
@@ -219,6 +220,8 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     return () => {
       window.removeEventListener('resize', handleResize);
       cancelAnimationFrame(animationFrameId);
+      timeoutRefsRef.current.forEach(timeoutId => clearTimeout(timeoutId));
+      timeoutRefsRef.current.clear();
       clearPreviewLine();
       controls.dispose();
       layerManager.dispose();
@@ -233,28 +236,27 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
       return;
     }
 
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let handleMapUpdate: (() => void) | null = null;
+
     const initializeAndSubscribe = async () => {
       try {
         await connection.initializeMessageReaders();
         TF2JS.getInstance().initialize(connection);
         layerManagerRef.current?.setLayerConfigs(DEFAULT_EDITOR_CONFIGS);
         
-        // 初始化 MapManager
         const mapManager = mapManagerRef.current;
         mapManager.initialize(connection);
         
-        // 监听地图更新
-        const handleMapUpdate = () => {
+        handleMapUpdate = () => {
           updateTopoMap();
         };
         mapManager.addTopologyListener(handleMapUpdate);
         
-        // 获取 topology layer 引用
-        setTimeout(() => {
+        timeoutId = setTimeout(() => {
           const topoLayer = layerManagerRef.current?.getLayer('topology') as TopoLayer | undefined;
           if (topoLayer) {
             topoLayerRef.current = topoLayer;
-            // 同步 MapManager 的数据到图层
             updateTopoMap();
           }
           
@@ -263,10 +265,6 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
             occupancyGridLayerRef.current = occupancyGridLayer;
           }
         }, 500);
-        
-        return () => {
-          mapManager.removeTopologyListener(handleMapUpdate);
-        };
       } catch (error) {
         console.error('Failed to initialize message readers:', error);
         toast.error('初始化失败，使用默认配置...');
@@ -278,6 +276,13 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     void initializeAndSubscribe();
 
     return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      if (handleMapUpdate && mapManagerRef.current) {
+        mapManagerRef.current.removeTopologyListener(handleMapUpdate);
+      }
+      mapManagerRef.current.disconnect();
       TF2JS.getInstance().disconnect();
     };
   }, [connection]);
@@ -1182,7 +1187,7 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
         });
         mapManagerRef.current.updateOccupancyGrid(occupancyGrid, true);
         
-        setTimeout(() => {
+        const timeoutId = setTimeout(() => {
           const layer = occupancyGridLayerRef.current;
           if (layer && 'renderMap' in layer) {
             const currentMap = mapManagerRef.current.getOccupancyGrid();
@@ -1194,7 +1199,9 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
               layer.renderMap(currentMap);
             }
           }
+          timeoutRefsRef.current.delete(timeoutId);
         }, 100);
+        timeoutRefsRef.current.add(timeoutId);
         
         toast.success('栅格地图导入成功');
       }

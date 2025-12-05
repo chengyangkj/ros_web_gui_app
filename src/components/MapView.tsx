@@ -83,6 +83,7 @@ export function MapView({ connection }: MapViewProps) {
   const activeKeysRef = useRef<Set<string>>(new Set());
   const cmdVelTopicRef = useRef<string>('/cmd_vel');
   const cmdVelIntervalRef = useRef<number | null>(null);
+  const timeoutRefsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
   const [relocalizeMode, setRelocalizeMode] = useState(false);
   const relocalizeModeRef = useRef(false);
   const relocalizeRobotPosRef = useRef<{ x: number; y: number; theta: number } | null>(null);
@@ -495,6 +496,8 @@ export function MapView({ connection }: MapViewProps) {
       canvas.removeEventListener('mousemove', handleMouseMoveWrapper);
       canvas.removeEventListener('mouseleave', handleMouseLeave);
       cancelAnimationFrame(animationFrameId);
+      timeoutRefsRef.current.forEach(timeoutId => clearTimeout(timeoutId));
+      timeoutRefsRef.current.clear();
       controls.dispose();
       layerManager.dispose();
       if (renderer) {
@@ -611,7 +614,7 @@ export function MapView({ connection }: MapViewProps) {
         viewModeRef.current = '2d';
       }
       
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         if (!controlsRef.current || !cameraRef.current) return;
         
         const robotConfig = layerConfigsRef.current.robot;
@@ -660,7 +663,9 @@ export function MapView({ connection }: MapViewProps) {
             controls.update();
           }
         }
+        timeoutRefsRef.current.delete(timeoutId);
       }, 100);
+      timeoutRefsRef.current.add(timeoutId);
     }
   };
   

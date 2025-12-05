@@ -42,6 +42,8 @@ export function useConnectionInit(
     void initializeAndSubscribe();
 
     return () => {
+      const mapManager = MapManager.getInstance();
+      mapManager.disconnect();
       TF2JS.getInstance().disconnect();
     };
   }, [connection, layerManagerRef, layerConfigs]);

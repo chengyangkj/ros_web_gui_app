@@ -52,13 +52,6 @@ export class LaserScanLayer extends BaseLayer {
       return;
     }
 
-    if (this.points) {
-      this.scene.remove(this.points);
-      this.points.geometry.dispose();
-      (this.points.material as THREE.Material).dispose();
-      this.points = null;
-    }
-
     const sourceFrame = msg.header?.frame_id || '';
     if (!sourceFrame) {
       return;
@@ -108,6 +101,13 @@ export class LaserScanLayer extends BaseLayer {
     const geometry = new THREE.BufferGeometry().setFromPoints(transformedPoints);
     const material = new THREE.PointsMaterial({ color: 0xff0000, size: 0.1 });
     const pointsMesh = new THREE.Points(geometry, material);
+
+    if (this.points) {
+      this.scene.remove(this.points);
+      this.points.geometry.dispose();
+      (this.points.material as THREE.Material).dispose();
+    }
+
     this.points = pointsMesh;
     this.object3D = pointsMesh;
     this.scene.add(pointsMesh);

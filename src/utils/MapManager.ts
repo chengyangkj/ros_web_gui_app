@@ -93,6 +93,7 @@ export class MapManager {
       return;
     }
     
+    this.disconnect();
     this.connection = connection;
     
     if (connection.isConnected()) {
@@ -101,6 +102,14 @@ export class MapManager {
     } else {
       console.log('[MapManager] Connection is not connected yet');
     }
+  }
+
+  public disconnect(): void {
+    if (this.connection && this.connection.isConnected()) {
+      this.connection.unsubscribe('/map/topology');
+      this.connection.unsubscribe('/map');
+    }
+    this.connection = null;
   }
 
   private subscribeToTopics(): void {
