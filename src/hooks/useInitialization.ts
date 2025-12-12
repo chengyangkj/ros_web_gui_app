@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import { DEFAULT_LAYER_CONFIGS } from '../constants/layerConfigs';
 import { loadLayerConfigs, loadImagePositions } from '../utils/layerConfigStorage';
 

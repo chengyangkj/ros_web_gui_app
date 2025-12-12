@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { LayerConfigMap } from '../types/LayerConfig';
 import type { ImageLayerData } from '../components/layers/ImageLayer';
 import { loadImagePositions, saveImagePositions, type ImagePositionsMap } from '../utils/layerConfigStorage';

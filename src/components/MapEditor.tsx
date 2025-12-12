@@ -1097,22 +1097,6 @@ export function MapEditor({ connection, onClose }: MapEditorProps) {
     };
   }, [currentTool, isDragging, isRotating, selectedPoint, routeStartPoint, lineStartPoint, isDrawing, brushSize]);
 
-  const handlePointPropertyChange = (field: keyof TopoPoint, value: string | number) => {
-    if (!selectedPoint) return;
-
-    const oldPoint = { ...selectedPoint };
-    const updatedPoint: TopoPoint = {
-      ...selectedPoint,
-      [field]: value,
-    };
-    const command = new ModifyPointCommand(mapManagerRef.current, oldPoint, updatedPoint, updateTopoMap);
-    commandManagerRef.current.executeCommand(command);
-    setSelectedPoint(updatedPoint);
-    const topoLayer = layerManagerRef.current?.getLayer('topology');
-    if (topoLayer instanceof TopoLayer) {
-      topoLayer.setSelectedPoint(updatedPoint);
-    }
-  };
 
   const handleRoutePropertyChange = (field: keyof RouteInfo, value: string | number) => {
     if (!selectedRoute) return;
