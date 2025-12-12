@@ -7,6 +7,7 @@ import type { TopicInfo } from '../types/TopicInfo';
 export class RosbridgeConnection {
   private ros: ROSLIB.Ros | null = null;
   private subscribers: Map<string, ROSLIB.Topic> = new Map();
+  private publishers: Map<string, ROSLIB.Topic> = new Map();
   private onMessageCallbacks: Map<string, (message: unknown) => void> = new Map();
   private messageReaders: Map<string, ROS1MessageReader | ROS2MessageReader> = new Map();
   private rosVersion: 1 | 2 = 1;
@@ -56,7 +57,7 @@ export class RosbridgeConnection {
 
     this.topicsCheckInterval = setInterval(() => {
       void this.checkTopicsChanged();
-    }, 3000);
+    }, 15000);
   }
 
   private stopTopicsMonitoring(): void {
@@ -137,6 +138,10 @@ export class RosbridgeConnection {
       topic.unsubscribe();
     });
     this.subscribers.clear();
+    this.publishers.forEach((topic) => {
+      topic.unadvertise();
+    });
+    this.publishers.clear();
     this.onMessageCallbacks.clear();
     this.messageReaders.clear();
     this.topicsWithTypes.clear();
@@ -196,8 +201,13 @@ export class RosbridgeConnection {
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        console.error('[RosbridgeConnection] getTopicsAndRawTypes timeout after 10 seconds');
-        reject(new Error('getTopicsAndRawTypes timeout'));
+        if (this.topicsAndRawTypesCache) {
+          console.warn('[RosbridgeConnection] getTopicsAndRawTypes timeout, using cached data');
+          resolve(this.topicsAndRawTypesCache);
+        } else {
+          console.error('[RosbridgeConnection] getTopicsAndRawTypes timeout after 10 seconds');
+          reject(new Error('getTopicsAndRawTypes timeout'));
+        }
       }, 10000);
 
       (this.ros as ROSLIB.Ros).getTopicsAndRawTypes(
@@ -211,8 +221,13 @@ export class RosbridgeConnection {
         },
         (error: string) => {
           clearTimeout(timeout);
-          console.error('[RosbridgeConnection] getTopicsAndRawTypes error:', error);
-          reject(new Error(error));
+          if (this.topicsAndRawTypesCache) {
+            console.warn('[RosbridgeConnection] getTopicsAndRawTypes error, using cached data:', error);
+            resolve(this.topicsAndRawTypesCache);
+          } else {
+            console.error('[RosbridgeConnection] getTopicsAndRawTypes error:', error);
+            reject(new Error(error));
+          }
         }
       );
     });
@@ -379,8 +394,9 @@ export class RosbridgeConnection {
 
   publish(topicName: string, messageType: string, message: unknown): void {
     if (!this.ros || !this.ros.isConnected) {
-      console.error('Not connected to rosbridge');
-      return;
+      const error = new Error('Not connected to rosbridge');
+      console.error('[RosbridgeConnection] publish failed:', error.message, { topicName, messageType });
+      throw error;
     }
 
     let actualMessageType = messageType;
@@ -395,13 +411,45 @@ export class RosbridgeConnection {
       }
     }
 
-    const topic = new ROSLIB.Topic({
-      ros: this.ros,
-      name: topicName,
-      messageType: actualMessageType,
-    });
-
-    topic.publish(message as ROSLIB.Message);
+    try {
+      let topic = this.publishers.get(topicName);
+      if (!topic) {
+        topic = new ROSLIB.Topic({
+          ros: this.ros,
+          name: topicName,
+          messageType: actualMessageType,
+        });
+        topic.advertise();
+        this.publishers.set(topicName, topic);
+        console.log('[RosbridgeConnection] Created and advertised publisher for topic', { topicName, messageType: actualMessageType });
+      }
+      
+      const messageStr = JSON.stringify(message, null, 2);
+      console.log('[RosbridgeConnection] Publishing message', { 
+        topicName, 
+        messageType: actualMessageType,
+        hasMessage: !!message,
+        messageKeys: message && typeof message === 'object' ? Object.keys(message) : [],
+        messagePreview: messageStr.substring(0, 500)
+      });
+      
+      topic.publish(message as ROSLIB.Message);
+      
+      console.log('[RosbridgeConnection] Message published successfully', { 
+        topicName,
+        messageType: actualMessageType,
+        rosConnected: this.ros?.isConnected
+      });
+    } catch (error) {
+      console.error('[RosbridgeConnection] Failed to publish message:', error, { 
+        topicName, 
+        messageType: actualMessageType,
+        rosConnected: this.ros?.isConnected,
+        errorDetails: error instanceof Error ? error.message : String(error)
+      });
+      this.publishers.delete(topicName);
+      throw error;
+    }
   }
 
 }
