@@ -28,11 +28,13 @@ interface Path {
 export class PathLayer extends BaseLayer {
   private line: THREE.Line | null = null;
   private color: number;
+  private lineWidth: number;
 
   constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
     this.color = (config.color as number | undefined) || 0x00ff00;
-    console.log('[PathLayer] Constructor:', { topic: config.topic, hasConnection: !!connection, isConnected: connection?.isConnected(), color: this.color });
+    this.lineWidth = (config.lineWidth as number | undefined) ?? 1;
+    console.log('[PathLayer] Constructor:', { topic: config.topic, hasConnection: !!connection, isConnected: connection?.isConnected(), color: this.color, lineWidth: this.lineWidth });
     if (config.topic) {
       this.subscribe(config.topic, this.getMessageType());
     }
@@ -69,12 +71,29 @@ export class PathLayer extends BaseLayer {
     }
 
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
-    const material = new THREE.LineBasicMaterial({ color: this.color });
+    const material = new THREE.LineBasicMaterial({ color: this.color, linewidth: this.lineWidth });
     const line = new THREE.Line(geometry, material);
 
     this.line = line;
     this.object3D = line;
     this.scene.add(line);
+  }
+
+  setConfig(config: LayerConfig): void {
+    const oldColor = this.color;
+    const oldLineWidth = this.lineWidth;
+    this.color = (config.color as number | undefined) ?? this.color;
+    this.lineWidth = (config.lineWidth as number | undefined) ?? this.lineWidth;
+    
+    if (this.line && (oldColor !== this.color || oldLineWidth !== this.lineWidth)) {
+      this.scene.remove(this.line);
+      this.line.geometry.dispose();
+      (this.line.material as THREE.Material).dispose();
+      this.line = null;
+      this.object3D = null;
+    }
+    
+    super.setConfig(config);
   }
 
   dispose(): void {

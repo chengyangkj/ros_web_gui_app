@@ -62,6 +62,7 @@ export const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     messageType: 'nav_msgs/Path',
     enabled: true,
     color: 0x00ff00,
+    lineWidth: 2,
   },
   plan: {
     id: 'plan',
@@ -70,6 +71,7 @@ export const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     messageType: 'nav_msgs/Path',
     enabled: true,
     color: 0x0000ff,
+    lineWidth: 2,
   },
   footprint: {
     id: 'footprint',

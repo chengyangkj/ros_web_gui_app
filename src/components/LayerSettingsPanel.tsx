@@ -214,9 +214,9 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
         }
       }
       
+      // 允许没有包引用的URDF文件（使用相对路径）
       if (Object.keys(packages).length === 0) {
-        toast.error('URDF 文件中未找到任何包引用（$(find ...)），无法确定文件路径');
-        return;
+        console.log('[LayerSettingsPanel] URDF 文件中未找到包引用，将使用相对路径加载 mesh 文件');
       }
 
       addUrdfConfig({
@@ -296,9 +296,9 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
         }
       }
       
+      // 允许没有包引用的URDF文件（使用相对路径）
       if (Object.keys(packages).length === 0) {
-        toast.error('URDF 文件中未找到任何包引用（$(find ...)），无法确定文件路径');
-        return;
+        console.log('[LayerSettingsPanel] URDF 文件中未找到包引用，将使用相对路径加载 mesh 文件');
       }
 
       addUrdfConfig({
@@ -1122,6 +1122,19 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                         type="color"
                         value={`#${((config.color as number | undefined) ?? 0x0000ff).toString(16).padStart(6, '0')}`}
                         onChange={(e) => handleFieldChange(layerId, 'color', parseInt(e.target.value.substring(1), 16))}
+                      />
+                    </div>
+                  )}
+                  {(config.lineWidth as number | undefined) !== undefined && (
+                    <div className="DetailRow">
+                      <span className="DetailLabel">线段宽度:</span>
+                      <input
+                        className="DetailInput NumberInput"
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={(config.lineWidth as number | undefined) ?? 1}
+                        onChange={(e) => handleFieldChange(layerId, 'lineWidth', parseFloat(e.target.value) || 1)}
                       />
                     </div>
                   )}
