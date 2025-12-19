@@ -60,8 +60,6 @@ export function MapView({ connection }: MapViewProps) {
   const [mouseWorldPos, setMouseWorldPos] = useState<{ x: number; y: number } | null>(null);
   const [robotPos, setRobotPos] = useState<{ x: number; y: number; theta: number } | null>(null);
   const focusRobotRef = useRef(false);
-  const followDistanceRef = useRef<number | null>(null);
-  const initialFollowDistanceRef = useRef<number | null>(null);
   const [selectedTopoPoint, setSelectedTopoPoint] = useState<{
     name: string;
     x: number;
@@ -116,7 +114,7 @@ export function MapView({ connection }: MapViewProps) {
 
     const canvas = canvasRef.current;
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1a1a);
+    scene.background = new THREE.Color(0x808080);
     sceneRef.current = scene;
 
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -140,7 +138,8 @@ export function MapView({ connection }: MapViewProps) {
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    renderer.setClearColor(0x808080, 1);
     renderer.setSize(canvas.clientWidth, canvas.clientHeight);
     renderer.setPixelRatio(window.devicePixelRatio);
     rendererRef.current = renderer;
@@ -426,56 +425,8 @@ export function MapView({ connection }: MapViewProps) {
                 transform.translation.y,
                 targetZ
               );
-
-              if (followDistanceRef.current === null) {
-                const currentDistance = camera.position.distanceTo(controls.target);
-                initialFollowDistanceRef.current = currentDistance;
-                const zoomFactor = (robotConfig as any).followZoomFactor ?? 0.3;
-                followDistanceRef.current = Math.max(currentDistance * zoomFactor, controls.minDistance);
-              }
-
-              // 获取机器人方向（绕 Z 轴的旋转角度）
-              const robotEuler = new THREE.Euler();
-              robotEuler.setFromQuaternion(transform.rotation, 'XYZ');
-              const robotTheta = robotEuler.z; // 机器人在 XY 平面的旋转角度（绕 Z 轴）
-
-              if (viewModeRef.current === '2d') {
-                camera.position.set(
-                  controls.target.x,
-                  controls.target.y,
-                  controls.target.z + followDistanceRef.current
-                );
-                camera.up.set(0, 0, 1);
-                // 根据机器人方向旋转相机，使机器人车头方向在屏幕正前方
-                // 屏幕正前方是 -Y 方向，所以需要旋转 -robotTheta
-                camera.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, -robotTheta, 'XYZ'));
-              } else {
-                // 3D 模式下，调整相机位置使机器人车头方向在屏幕正前方
-                const targetDistance = followDistanceRef.current;
-
-                // 计算相机应该的位置（在机器人后方，高度适中）
-                // 机器人车头方向是 (cos(robotTheta), sin(robotTheta), 0)
-                // 相机应该在机器人后方，所以是 (-cos(robotTheta), -sin(robotTheta), height)
-                const cameraHeight = targetDistance * 0.3; // 相机高度
-                const cameraBackDistance = Math.sqrt(targetDistance * targetDistance - cameraHeight * cameraHeight);
-                const cameraX = -Math.cos(robotTheta) * cameraBackDistance;
-                const cameraY = -Math.sin(robotTheta) * cameraBackDistance;
-                const cameraZ = cameraHeight;
-
-                camera.position.set(
-                  controls.target.x + cameraX,
-                  controls.target.y + cameraY,
-                  controls.target.z + cameraZ
-                );
-
-                // 相机看向机器人
-                camera.lookAt(controls.target);
-              }
             }
           }
-        } else {
-          followDistanceRef.current = null;
-          initialFollowDistanceRef.current = null;
         }
 
         updateRobotPosition();
@@ -614,28 +565,7 @@ export function MapView({ connection }: MapViewProps) {
   const handleFocusRobotToggle = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    setFocusRobot((prev) => {
-      if (!prev && controlsRef.current && cameraRef.current) {
-        const controls = controlsRef.current;
-        const camera = cameraRef.current;
-        const currentDistance = camera.position.distanceTo(controls.target);
-        initialFollowDistanceRef.current = currentDistance;
-        // 应用缩放倍数
-        const robotConfig = layerConfigsRef.current.robot;
-        const zoomFactor = (robotConfig as any)?.followZoomFactor ?? 0.3;
-        followDistanceRef.current = Math.max(currentDistance * zoomFactor, controls.minDistance);
-      } else if (!prev) {
-        followDistanceRef.current = 10;
-        initialFollowDistanceRef.current = null;
-      } else {
-        // 取消跟随时，恢复原始距离
-        if (initialFollowDistanceRef.current !== null) {
-          followDistanceRef.current = initialFollowDistanceRef.current;
-          initialFollowDistanceRef.current = null;
-        }
-      }
-      return !prev;
-    });
+    setFocusRobot((prev) => !prev);
   };
 
 

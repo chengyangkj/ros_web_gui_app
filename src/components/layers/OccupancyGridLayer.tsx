@@ -261,7 +261,12 @@ export class OccupancyGridLayer extends BaseLayer {
       const value = data[i]! | 0;
       const offset = i * 4;
 
-      if (this.settings.colorMode === 'custom') {
+      if (value === -1) {
+        rgba[offset + 0] = 0;
+        rgba[offset + 1] = 0;
+        rgba[offset + 2] = 0;
+        rgba[offset + 3] = 0;
+      } else if (this.settings.colorMode === 'custom') {
         if (value === 100) {
           rgba[offset + 0] = tempMaxColor.r;
           rgba[offset + 1] = tempMaxColor.g;
