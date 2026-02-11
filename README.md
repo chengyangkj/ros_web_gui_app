@@ -17,7 +17,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/chengyangkj/ros_web_gui_app?style=flat-square)](https://github.com/chengyangkj/ros_web_gui_app/stargazers)
 [![GitHub forks](https://img.shields.io/github/forks/chengyangkj/ros_web_gui_app?style=flat-square)](https://github.com/chengyangkj/ros_web_gui_app/network/members)
 [![GitHub issues](https://img.shields.io/github/issues/chengyangkj/ros_web_gui_app?style=flat-square)](https://github.com/chengyangkj/ros_web_gui_app/issues)
-[![License](https://img.shields.io/github/license/chengyangkj/ros_web_gui_app?style=flat-square)](LICENSE)
+[![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 
 ![build](https://github.com/chengyangkj/ros_web_gui_app/actions/workflows/build.yaml/badge.svg)
 ![test](https://github.com/chengyangkj/ros_web_gui_app/actions/workflows/test.yaml/badge.svg)
