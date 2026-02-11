@@ -7,7 +7,7 @@
 -->
 <div align="center">
 
-# ROS Web GUI 应用
+# ROS Web GUI APP
 
 *基于 React + TypeScript + Vite 构建的 ROS 机器人可视化与地图编辑 Web 应用*
 
