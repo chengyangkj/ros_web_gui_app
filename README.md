@@ -309,15 +309,9 @@ python3 -m http.server 8001
 - **构建工具**：Vite
 - **3D 渲染**：Three.js
 - **ROS 通信**：roslib.js + rosbridge WebSocket
-- **消息序列化**：[@lichtblick/rosmsg](https://www.npmjs.com/package/@lichtblick/rosmsg), [@lichtblick/rosmsg-serialization](https://www.npmjs.com/package/@lichtblick/rosmsg-serialization)
+- **消息序列化**：[@lichtblick/rosmsg](https://www.npmjs.com/package/@lichtblick/rosmsg), [@lichtblick/rosmsg-serialization](https://www.npmjs.com/package/@lichtblick/rosmsg-serialization)（来自 [Lichtblick](https://github.com/lichtblick-suite/lichtblick) 生态）
 
 ## 💻 开发
-
-### 代码检查
-
-```bash
-npm run lint
-```
 
 ### 项目结构
 
@@ -334,21 +328,6 @@ src/
 └── types/              # TypeScript 类型定义
 ```
 
-## ❓ 常见问题
-
-**Q: 连接失败怎么办？**
-- 检查 rosbridge_server 是否正在运行
-- 确认 IP 地址和端口是否正确
-
-**Q: 地图不显示？**
-- 确认 `/map` 话题正在发布
-- 检查话题类型是否为 `nav_msgs/OccupancyGrid`
-- 查看浏览器控制台是否有错误信息
-
-**Q: 拓扑地图编辑后无法保存？**
-- 确认已连接到 ROS 系统
-- 检查是否有发布权限
-- 查看浏览器控制台错误信息
 
 ## 📊 Star 历史
 
@@ -386,6 +365,8 @@ src/
 
 详情请参阅 [LICENSE](LICENSE) 文件。
 
-## 🙏 致谢
+## 🙏 特别致谢
+
+- 特别感谢 [Lichtblick](https://github.com/lichtblick-suite/lichtblick) 项目提供的开源可视化与消息处理方案，本项目在消息类型与序列化（[@lichtblick/rosmsg](https://www.npmjs.com/package/@lichtblick/rosmsg)、[@lichtblick/rosmsg-serialization](https://www.npmjs.com/package/@lichtblick/rosmsg-serialization)）
 
 感谢所有贡献者和使用者的支持！
