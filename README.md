@@ -1,44 +1,74 @@
+<!--
+ * @Author: chengyangkj chengyangkj@qq.com
+ * @Date: 2024-01-15
+ * @LastEditors: chengyangkj chengyangkj@qq.com
+ * @LastEditTime: 2024-01-15
+ * @FilePath: /ros_web_gui_app/README.md
+-->
+<div align="center">
+
 # ROS Web GUI 应用
 
-基于 React + TypeScript + Vite 构建的 ROS 机器人可视化与地图编辑 Web 应用。通过 rosbridge WebSocket 协议连接 ROS 1 或 ROS 2 系统，提供实时地图可视化、拓扑地图编辑、机器人位置跟踪等功能。
+*基于 React + TypeScript + Vite 构建的 ROS 机器人可视化与地图编辑 Web 应用*
 
-## 功能特性
+[简体中文](./README.md) | [English](./README_en.md)
 
-- 🗺️ **地图可视化**
+[![GitHub last commit](https://img.shields.io/github/last-commit/chengyangkj/ros_web_gui_app?style=flat-square)](https://github.com/chengyangkj/ros_web_gui_app/commits/main)
+[![GitHub stars](https://img.shields.io/github/stars/chengyangkj/ros_web_gui_app?style=flat-square)](https://github.com/chengyangkj/ros_web_gui_app/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/chengyangkj/ros_web_gui_app?style=flat-square)](https://github.com/chengyangkj/ros_web_gui_app/network/members)
+[![GitHub issues](https://img.shields.io/github/issues/chengyangkj/ros_web_gui_app?style=flat-square)](https://github.com/chengyangkj/ros_web_gui_app/issues)
+[![License](https://img.shields.io/github/license/chengyangkj/ros_web_gui_app?style=flat-square)](LICENSE)
+
+![build](https://github.com/chengyangkj/ros_web_gui_app/actions/workflows/build.yaml/badge.svg)
+![test](https://github.com/chengyangkj/ros_web_gui_app/actions/workflows/test.yaml/badge.svg)
+![lint](https://github.com/chengyangkj/ros_web_gui_app/actions/workflows/lint.yaml/badge.svg)
+
+</div>
+
+## 📖 简介
+
+本项目基于 React + TypeScript + Vite 构建，通过 rosbridge WebSocket 协议连接 ROS 1 或 ROS 2 系统，提供实时地图可视化、拓扑地图编辑、机器人位置跟踪等功能。所有功能均为自行绘制实现，可在浏览器中直接运行，无需安装额外软件。
+
+### ✨ 功能特性
+
+- **地图可视化**
   - 栅格地图（Occupancy Grid）显示
   - 局部/全局代价地图可视化
   - 激光雷达扫描数据可视化
   - 机器人位置与路径规划显示
-  ![2D 地图视图](doc/images/2d.png)
 
-- 📍 **拓扑地图编辑**
+- **拓扑地图编辑**
   - 添加/删除/编辑导航点位
   - 创建拓扑路径连接
   - 路径属性配置（控制器、目标检查器、速度限制）
   - 地图导入/导出功能
-  
-  ![地图编辑](doc/images/map_edit.png)
 
-- 🤖 **机器人跟踪**
+- **机器人跟踪**
   - 实时显示机器人位置
   - 跟随机器人视角
   - TF 坐标系可视化
 
-- 🎨 **视图模式**
+- **视图模式**
   - 2D/3D 视图切换
   - 全屏模式
   - 图层配置与管理
 
-  ![3D 地图视图](doc/images/3d.png)
+### 🖼️ 界面预览
+
+![2D 地图视图](doc/images/2d.png)
+![地图编辑](doc/images/map_edit.png)
+![3D 地图视图](doc/images/3d.png)
 
 
-## 环境要求
+## 🚀 快速开始
 
-- Node.js >= 20.19.0 或 >= 22.12.0
-- npm >= 9.0.0 或 yarn >= 1.22.0
-- ROS 1 或 ROS 2 系统（需要运行 rosbridge_server）
+### 环境要求
 
-## npm 安装教程
+- **Node.js**: >= 20.19.0 或 >= 22.12.0
+- **npm**: >= 9.0.0 或 yarn >= 1.22.0
+- **ROS 环境**: ROS 1 或 ROS 2 系统（需要运行 rosbridge_server）
+
+## 📥 安装依赖
 
 ### Windows
 
@@ -102,11 +132,13 @@ node --version
 npm --version
 ```
 
-## 安装步骤
+## 🚀 编译与使用
+
+### 安装步骤
 
 1. **克隆项目**
 ```bash
-git clone <repository-url>
+git clone https://github.com/chengyangkj/ros_web_gui_app.git
 cd ros_web_gui_app
 ```
 
@@ -115,7 +147,7 @@ cd ros_web_gui_app
 npm install
 ```
 
-## 运行说明
+## 🎮 运行说明
 
 ### 开发模式
 
@@ -156,7 +188,7 @@ ros2 run rosbridge_server rosbridge_websocket
 
 默认情况下，rosbridge_server 会在 `ws://localhost:9090` 启动 WebSocket 服务。
 
-## 使用说明
+## 📚 使用说明
 
 ### 项目部署
 
@@ -252,7 +284,7 @@ python3 -m http.server 8001
 3. 在地图上进行编辑操作
 4. 编辑完成后点击 `💾 保存` 保存更改
 
-## 主要话题
+## 📡 主要话题
 
 应用订阅的主要 ROS 话题：
 
@@ -271,7 +303,7 @@ python3 -m http.server 8001
 - `/map/update` - 栅格地图更新
 - `/goal_pose` - 导航目标（geometry_msgs/PoseStamped）
 
-## 技术栈
+## 🛠️ 技术栈
 
 - **前端框架**：React 19 + TypeScript
 - **构建工具**：Vite
@@ -279,7 +311,7 @@ python3 -m http.server 8001
 - **ROS 通信**：roslib.js + rosbridge WebSocket
 - **消息序列化**：@lichtblick/rosmsg, @lichtblick/rosmsg-serialization
 
-## 开发
+## 💻 开发
 
 ### 代码检查
 
@@ -302,12 +334,11 @@ src/
 └── types/              # TypeScript 类型定义
 ```
 
-## 常见问题
+## ❓ 常见问题
 
 **Q: 连接失败怎么办？**
 - 检查 rosbridge_server 是否正在运行
 - 确认 IP 地址和端口是否正确
-- 检查防火墙设置是否阻止了 WebSocket 连接
 
 **Q: 地图不显示？**
 - 确认 `/map` 话题正在发布
@@ -319,11 +350,34 @@ src/
 - 检查是否有发布权限
 - 查看浏览器控制台错误信息
 
-## 许可证
+## 📊 Star 历史
+
+<div align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=chengyangkj/ros_web_gui_app&type=Timeline&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=chengyangkj/ros_web_gui_app&type=Timeline" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=chengyangkj/ros_web_gui_app&type=Timeline" width="75%" />
+  </picture>
+</div>
+
+## 🤝 贡献
+
+欢迎提交 [Issues](https://github.com/chengyangkj/ros_web_gui_app/issues) 和 [Pull Requests](https://github.com/chengyangkj/ros_web_gui_app/pulls)！
+
+如果有什么想法或者建议，欢迎提交 Issue，说不定哪天就实现了呢！
+
+### 贡献指南
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启 Pull Request
+
+## 📄 开源协议
 
 本项目采用 GPL 2.0 许可证。详情请参阅 [LICENSE](LICENSE) 文件。
 
-## 贡献
+## 🙏 致谢
 
-欢迎提交 Issue 和 Pull Request！
-
+感谢所有贡献者和使用者的支持！
