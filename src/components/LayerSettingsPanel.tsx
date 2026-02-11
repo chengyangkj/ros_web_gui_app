@@ -517,15 +517,15 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                         <input
                           className="DetailInput"
                           type="text"
-                          value={getEditingValue(layerId, 'baseFrame', (config as any).baseFrame)}
+                          value={getEditingValue(layerId, 'baseFrame', config.baseFrame as string | undefined)}
                           onChange={(e) => updateEditingValue(layerId, 'baseFrame', e.target.value)}
                           onBlur={() => {
-                            const value = getEditingValue(layerId, 'baseFrame', (config as any).baseFrame);
+                            const value = getEditingValue(layerId, 'baseFrame', config.baseFrame as string | undefined);
                             handleFieldChange(layerId, 'baseFrame', value || null);
                           }}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
-                              const value = getEditingValue(layerId, 'baseFrame', (config as any).baseFrame);
+                              const value = getEditingValue(layerId, 'baseFrame', config.baseFrame as string | undefined);
                               handleFieldChange(layerId, 'baseFrame', value || null);
                             }
                             if (e.key === 'Escape') {
@@ -546,9 +546,9 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                       ) : (
                         <span
                           className="DetailValue"
-                          onClick={() => startEditing(layerId, 'baseFrame', (config as any).baseFrame)}
+                          onClick={() => startEditing(layerId, 'baseFrame', config.baseFrame as string | undefined)}
                         >
-                          {(config as any).baseFrame || '-'}
+                          {(config.baseFrame as string | undefined) || '-'}
                         </span>
                       )}
                     </div>
@@ -558,15 +558,15 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                         <input
                           className="DetailInput"
                           type="text"
-                          value={getEditingValue(layerId, 'mapFrame', (config as any).mapFrame)}
+                          value={getEditingValue(layerId, 'mapFrame', config.mapFrame as string | undefined)}
                           onChange={(e) => updateEditingValue(layerId, 'mapFrame', e.target.value)}
                           onBlur={() => {
-                            const value = getEditingValue(layerId, 'mapFrame', (config as any).mapFrame);
+                            const value = getEditingValue(layerId, 'mapFrame', config.mapFrame as string | undefined);
                             handleFieldChange(layerId, 'mapFrame', value || null);
                           }}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
-                              const value = getEditingValue(layerId, 'mapFrame', (config as any).mapFrame);
+                              const value = getEditingValue(layerId, 'mapFrame', config.mapFrame as string | undefined);
                               handleFieldChange(layerId, 'mapFrame', value || null);
                             }
                             if (e.key === 'Escape') {
@@ -587,9 +587,9 @@ export function LayerSettingsPanel({ layerConfigs, onConfigChange, onResetToDefa
                       ) : (
                         <span
                           className="DetailValue"
-                          onClick={() => startEditing(layerId, 'mapFrame', (config as any).mapFrame)}
+                          onClick={() => startEditing(layerId, 'mapFrame', config.mapFrame as string | undefined)}
                         >
-                          {(config as any).mapFrame || '-'}
+                          {(config.mapFrame as string | undefined) || '-'}
                         </span>
                       )}
                     </div>

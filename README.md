@@ -309,7 +309,7 @@ python3 -m http.server 8001
 - **构建工具**：Vite
 - **3D 渲染**：Three.js
 - **ROS 通信**：roslib.js + rosbridge WebSocket
-- **消息序列化**：@lichtblick/rosmsg, @lichtblick/rosmsg-serialization
+- **消息序列化**：[@lichtblick/rosmsg](https://www.npmjs.com/package/@lichtblick/rosmsg), [@lichtblick/rosmsg-serialization](https://www.npmjs.com/package/@lichtblick/rosmsg-serialization)
 
 ## 💻 开发
 
@@ -376,7 +376,15 @@ src/
 
 ## 📄 开源协议
 
-本项目采用 GPL 2.0 许可证。详情请参阅 [LICENSE](LICENSE) 文件。
+本项目采用 [CC BY-NC-SA 4.0](LICENSE) 许可证（知识共享署名-非商业性使用-相同方式共享 4.0 国际许可协议）。
+
+**重要说明：**
+- ✅ **允许**：学习、研究、个人使用
+- ✅ **允许**：修改和分发，但必须保留原项目署名
+- ❌ **禁止**：商业用途
+- 📝 **要求**：基于本项目的衍生作品必须采用相同许可证，并附上原项目链接
+
+详情请参阅 [LICENSE](LICENSE) 文件。
 
 ## 🙏 致谢
 

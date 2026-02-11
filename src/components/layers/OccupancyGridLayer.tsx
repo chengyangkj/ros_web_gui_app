@@ -153,8 +153,8 @@ export class OccupancyGridLayer extends BaseLayer {
     this.mesh.scale.set(mapWidth, mapHeight, 1);
     
     const sourceFrame = msg.header?.frame_id || '';
-    let originPosition = new THREE.Vector3(origin.position.x, origin.position.y, origin.position.z);
-    let originQuaternion = new THREE.Quaternion(
+    const originPosition = new THREE.Vector3(origin.position.x, origin.position.y, origin.position.z);
+    const originQuaternion = new THREE.Quaternion(
       origin.orientation.x,
       origin.orientation.y,
       origin.orientation.z,
