@@ -61,8 +61,16 @@ export class TF2JS {
 
   private constructor() {}
 
+  private normalizeFrameId(frameId: string): string {
+    return frameId.startsWith('/') ? frameId.slice(1) : frameId;
+  }
+
   public getFrames(): string[] {
     return Array.from(this.frames.keys());
+  }
+
+  public areFramesEqual(frame1: string, frame2: string): boolean {
+    return this.normalizeFrameId(frame1) === this.normalizeFrameId(frame2);
   }
 
   public static getInstance(): TF2JS {
@@ -153,10 +161,11 @@ export class TF2JS {
   }
 
   private getOrCreateFrame(frameId: string): Frame {
-    let frame = this.frames.get(frameId);
+    const normalizedId = this.normalizeFrameId(frameId);
+    let frame = this.frames.get(normalizedId);
     if (!frame) {
-      frame = new Frame(frameId);
-      this.frames.set(frameId, frame);
+      frame = new Frame(normalizedId);
+      this.frames.set(normalizedId, frame);
       if (!this.rootFrame) {
         this.rootFrame = frame;
       }
@@ -165,8 +174,8 @@ export class TF2JS {
   }
 
   private addTransform(transformStamped: TransformStamped): void {
-    const parentFrameId = transformStamped.header.frame_id;
-    const childFrameId = transformStamped.child_frame_id;
+    const parentFrameId = this.normalizeFrameId(transformStamped.header.frame_id);
+    const childFrameId = this.normalizeFrameId(transformStamped.child_frame_id);
     const t = transformStamped.transform.translation;
     const r = transformStamped.transform.rotation;
 
@@ -197,8 +206,18 @@ export class TF2JS {
   }
 
   public findTransform(targetFrame: string, sourceFrame: string): Transform | null {
-    const target = this.frames.get(targetFrame);
-    const source = this.frames.get(sourceFrame);
+    const normalizedTarget = this.normalizeFrameId(targetFrame);
+    const normalizedSource = this.normalizeFrameId(sourceFrame);
+    
+    if (normalizedTarget === normalizedSource) {
+      return {
+        translation: new THREE.Vector3(0, 0, 0),
+        rotation: new THREE.Quaternion(0, 0, 0, 1),
+      };
+    }
+    
+    const target = this.frames.get(normalizedTarget);
+    const source = this.frames.get(normalizedSource);
 
     if (!target || !source) {
       return null;
@@ -300,7 +319,7 @@ export class TF2JS {
   }
 
   public hasFrame(frameId: string): boolean {
-    return this.frames.has(frameId);
+    return this.frames.has(this.normalizeFrameId(frameId));
   }
 
   public transformPoint(point: THREE.Vector3, sourceFrame: string, targetFrame: string): THREE.Vector3 | null {
@@ -339,6 +358,26 @@ export class TF2JS {
     matrix.makeRotationFromQuaternion(transform.rotation);
     matrix.setPosition(transform.translation);
     return matrix;
+  }
+
+  public transformPointsToFrame(
+    points: Array<{ x: number; y: number; z?: number }>,
+    sourceFrame: string,
+    targetFrame: string
+  ): THREE.Vector3[] | null {
+    const transform = this.findTransform(targetFrame, sourceFrame);
+    if (!transform) {
+      return null;
+    }
+
+    const matrix = new THREE.Matrix4();
+    matrix.makeRotationFromQuaternion(transform.rotation);
+    matrix.setPosition(transform.translation);
+
+    return points.map(p => {
+      const vec3 = new THREE.Vector3(p.x, p.y, p.z || 0);
+      return vec3.clone().applyMatrix4(matrix);
+    });
   }
 }
 

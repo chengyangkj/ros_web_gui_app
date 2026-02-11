@@ -10,6 +10,7 @@ import {
 } from '../../utils/colorUtils';
 import type { ColorModes } from '../../utils/colorUtils';
 import { MapManager, type OccupancyGrid } from '../../utils/MapManager';
+import { TF2JS } from '../../utils/tf2js';
 
 
 interface OccupancyGridSettings {
@@ -37,9 +38,13 @@ export class OccupancyGridLayer extends BaseLayer {
   protected lastMessage: OccupancyGrid | null = null;
   protected mapManager: MapManager;
   private handleMapUpdate: ((map: OccupancyGrid | null) => void) | null = null;
+  private tf2js: TF2JS;
+  private mapFrame: string;
 
   constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
+    this.tf2js = TF2JS.getInstance();
+    this.mapFrame = (config.mapFrame as string | undefined) || 'map';
     this.settings = {
       colorMode: (config.colorMode as ColorModes | undefined) || 'map',
       minColor: (config.minColor as string | undefined) || rgbaToCssString(DEFAULT_MIN_COLOR),
@@ -147,19 +152,39 @@ export class OccupancyGridLayer extends BaseLayer {
     const mapHeight = height * resolution;
     this.mesh.scale.set(mapWidth, mapHeight, 1);
     
-    const originQuaternion = new THREE.Quaternion(
+    const sourceFrame = msg.header?.frame_id || '';
+    let originPosition = new THREE.Vector3(origin.position.x, origin.position.y, origin.position.z);
+    let originQuaternion = new THREE.Quaternion(
       origin.orientation.x,
       origin.orientation.y,
       origin.orientation.z,
       origin.orientation.w
     );
+
+    if (sourceFrame) {
+      const transform = this.tf2js.findTransform(this.mapFrame, sourceFrame);
+      if (transform) {
+        const transformMatrix = new THREE.Matrix4();
+        transformMatrix.makeRotationFromQuaternion(transform.rotation);
+        transformMatrix.setPosition(transform.translation);
+        
+        originPosition.applyMatrix4(transformMatrix);
+        originQuaternion.premultiply(transform.rotation);
+      } else {
+        console.warn('[OccupancyGridLayer] Transform not found:', {
+          sourceFrame,
+          targetFrame: this.mapFrame,
+          availableFrames: this.tf2js.getFrames()
+        });
+      }
+    }
     
     this.mesh.position.set(
-      origin.position.x,
-      origin.position.y,
-      origin.position.z + (this.settings.height ?? 0)
+      originPosition.x,
+      originPosition.y,
+      originPosition.z + (this.settings.height ?? 0)
     );
-    
+    console.log('[OccupancyGridLayer] topic:', this.config.topic, 'height:', this.settings.height);
     this.mesh.quaternion.copy(originQuaternion);
   }
 
@@ -292,6 +317,10 @@ export class OccupancyGridLayer extends BaseLayer {
 
   setConfig(config: LayerConfig): void {
     const oldTopic = this.config.topic;
+    const cfg = config as LayerConfig & { mapFrame?: string };
+    if (cfg.mapFrame) {
+      this.mapFrame = cfg.mapFrame;
+    }
     this.config = config;
     
     if (oldTopic !== config.topic && this.connection?.isConnected()) {

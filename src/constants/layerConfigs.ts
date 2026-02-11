@@ -25,7 +25,7 @@ export const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     enabled: true,
     colorMode: 'costmap',
     alpha: 0.7,
-    height: 0.001,
+    height: 0.02,
   },
   global_costmap: {
     id: 'global_costmap',
@@ -35,7 +35,7 @@ export const DEFAULT_LAYER_CONFIGS: LayerConfigMap = {
     enabled: true,
     colorMode: 'costmap',
     alpha: 0.3,
-    height: 0,
+    height: 0.01,
   },
   laser_scan: {
     id: 'laser_scan',

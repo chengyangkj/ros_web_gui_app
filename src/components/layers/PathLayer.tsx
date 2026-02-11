@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { BaseLayer } from './BaseLayer';
 import type { LayerConfig } from '../../types/LayerConfig';
 import type { RosbridgeConnection } from '../../utils/RosbridgeConnection';
+import { TF2JS } from '../../utils/tf2js';
 
 interface Point {
   x: number;
@@ -29,12 +30,15 @@ export class PathLayer extends BaseLayer {
   private line: THREE.Line | null = null;
   private color: number;
   private lineWidth: number;
+  private tf2js: TF2JS;
+  private mapFrame: string;
 
   constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
+    this.tf2js = TF2JS.getInstance();
+    this.mapFrame = (config.mapFrame as string | undefined) || 'map';
     this.color = (config.color as number | undefined) || 0x00ff00;
     this.lineWidth = (config.lineWidth as number | undefined) ?? 1;
-    console.log('[PathLayer] Constructor:', { topic: config.topic, hasConnection: !!connection, isConnected: connection?.isConnected(), color: this.color, lineWidth: this.lineWidth });
     if (config.topic) {
       this.subscribe(config.topic, this.getMessageType());
     }
@@ -47,7 +51,6 @@ export class PathLayer extends BaseLayer {
   update(message: unknown): void {
     const msg = message as Path;
     if (!msg.poses || !Array.isArray(msg.poses) || msg.poses.length === 0) {
-      console.log('[PathLayer] No poses or empty poses');
       if (this.line) {
         this.scene.remove(this.line);
         this.line.geometry.dispose();
@@ -58,19 +61,31 @@ export class PathLayer extends BaseLayer {
       return;
     }
 
+    const sourceFrame = msg.header?.frame_id || '';
+
     if (this.line) {
       this.scene.remove(this.line);
       this.line.geometry.dispose();
       (this.line.material as THREE.Material).dispose();
     }
 
-    const points: THREE.Vector3[] = [];
-    for (const poseStamped of msg.poses) {
-      const pos = poseStamped.pose.position;
-      points.push(new THREE.Vector3(pos.x, pos.y, pos.z+0.001));
+    const pointData = msg.poses.map(poseStamped => ({
+      x: poseStamped.pose.position.x,
+      y: poseStamped.pose.position.y,
+      z: poseStamped.pose.position.z + 0.01
+    }));
+
+    const transformedPoints = this.tf2js.transformPointsToFrame(pointData, sourceFrame, this.mapFrame);
+    if (!transformedPoints) {
+      console.warn('[PathLayer] Transform not found:', {
+        sourceFrame,
+        targetFrame: this.mapFrame,
+        availableFrames: this.tf2js.getFrames()
+      });
+      return;
     }
 
-    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const geometry = new THREE.BufferGeometry().setFromPoints(transformedPoints);
     const material = new THREE.LineBasicMaterial({ color: this.color, linewidth: this.lineWidth });
     const line = new THREE.Line(geometry, material);
 
@@ -80,6 +95,11 @@ export class PathLayer extends BaseLayer {
   }
 
   setConfig(config: LayerConfig): void {
+    const cfg = config as LayerConfig & { mapFrame?: string };
+    if (cfg.mapFrame) {
+      this.mapFrame = cfg.mapFrame;
+    }
+    
     const oldColor = this.color;
     const oldLineWidth = this.lineWidth;
     this.color = (config.color as number | undefined) ?? this.color;

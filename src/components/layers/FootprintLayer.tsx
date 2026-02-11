@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { BaseLayer } from './BaseLayer';
 import type { LayerConfig } from '../../types/LayerConfig';
 import type { RosbridgeConnection } from '../../utils/RosbridgeConnection';
+import { TF2JS } from '../../utils/tf2js';
 
 interface Point {
   x: number;
@@ -20,9 +21,13 @@ interface PolygonStamped {
 
 export class FootprintLayer extends BaseLayer {
   private line: THREE.LineLoop | null = null;
+  private tf2js: TF2JS;
+  private mapFrame: string;
 
   constructor(scene: THREE.Scene, config: LayerConfig, connection: RosbridgeConnection | null = null) {
     super(scene, config, connection);
+    this.tf2js = TF2JS.getInstance();
+    this.mapFrame = (config.mapFrame as string | undefined) || 'map';
     if (config.topic) {
       this.subscribe(config.topic, this.getMessageType());
     }
@@ -46,6 +51,11 @@ export class FootprintLayer extends BaseLayer {
       return;
     }
 
+    const sourceFrame = msg.header?.frame_id || '';
+    if (!sourceFrame) {
+      return;
+    }
+
     const points = msg.polygon.points;
     
     if (points.length < 3) {
@@ -59,15 +69,27 @@ export class FootprintLayer extends BaseLayer {
       (this.line.material as THREE.Material).dispose();
     }
 
-    const vertices: number[] = [];
+    const pointData = points
+      .filter(p => typeof p.x === 'number' && typeof p.y === 'number')
+      .map(p => ({ x: p.x, y: p.y, z: p.z || 0 }));
 
-    for (let i = 0; i < points.length; i++) {
-      const point = points[i]!;
-      if (typeof point.x !== 'number' || typeof point.y !== 'number') {
-        console.warn('[FootprintLayer] Invalid point format:', point);
-        return;
-      }
-      vertices.push(point.x, point.y, 0.002);
+    const transformedPoints = this.tf2js.transformPointsToFrame(pointData, sourceFrame, this.mapFrame);
+    if (!transformedPoints) {
+      console.warn('[FootprintLayer] Transform not found:', {
+        sourceFrame,
+        targetFrame: this.mapFrame,
+        availableFrames: this.tf2js.getFrames()
+      });
+      return;
+    }
+
+    if (transformedPoints.length < 3) {
+      return;
+    }
+
+    const vertices: number[] = [];
+    for (const point of transformedPoints) {
+      vertices.push(point.x, point.y, point.z+0.01);
     }
 
     const geometry = new THREE.BufferGeometry();
@@ -87,6 +109,14 @@ export class FootprintLayer extends BaseLayer {
     this.line = line;
     this.object3D = line;
     this.scene.add(line);
+  }
+
+  setConfig(config: LayerConfig): void {
+    const cfg = config as LayerConfig & { mapFrame?: string };
+    if (cfg.mapFrame) {
+      this.mapFrame = cfg.mapFrame;
+    }
+    super.setConfig(config);
   }
 
   dispose(): void {
